@@ -1,0 +1,52 @@
+{
+  "id": "ext_01M4B6TAC9V9F8QK3006371KF8",
+  "slug": "web-search",
+  "displayName": "网页搜索",
+  "description": "让智能体搜索网络上的最新信息并给出来源。支持博查、Tavily 与自建的 SearXNG，在配置中填写服务地址与 API Key 即可。",
+  "scope": "agent",
+  "createdAt": 1791378000000,
+  "requires": { "sdk": 6 },
+  "permissions": {
+    "permissions": [],
+    "networkOrigins": [],
+    "capabilities": {
+      "network": { "mode": "config", "fields": ["endpoint"] },
+      "context": [{ "name": "web-search-guide", "kind": "static", "maxChars": 300 }]
+    }
+  },
+  "config": {
+    "schema": {
+      "type": "object",
+      "dict": {
+        "endpoint": {
+          "type": "string",
+          "meta": {
+            "description": "搜索服务地址",
+            "default": "https://api.bochaai.com",
+            "hint": "博查填 https://api.bochaai.com，Tavily 填 https://api.tavily.com，其他地址按 SearXNG 处理（需在 SearXNG 设置中开启 JSON 格式）。"
+          }
+        },
+        "apiKey": {
+          "type": "string",
+          "meta": {
+            "description": "API Key",
+            "role": "secret",
+            "hint": "博查与 Tavily 需要；SearXNG 不需要。"
+          }
+        },
+        "maxResults": {
+          "type": "natural",
+          "meta": { "description": "默认返回条数", "default": 5, "min": 1, "max": 10 }
+        }
+      }
+    }
+  },
+  "contributions": [
+    {
+      "kind": "tool",
+      "name": "web_search",
+      "description": "搜索网络，返回标题、链接、摘要与发布时间",
+      "verificationInput": { "query": "NekroNXT" }
+    }
+  ]
+}

@@ -1,0 +1,30 @@
+{
+  "id": "ext_01M4B6TAC9938JP3T3EG7Q0E21",
+  "slug": "dice",
+  "displayName": "掷骰与抽签",
+  "description": "按骰子表达式掷骰（如 3d6+2、d20），进行百分骰检定，或从若干选项中随机抽取。结果由宿主随机数决定，智能体负责播报。",
+  "scope": "agent",
+  "createdAt": 1791378000000,
+  "requires": { "sdk": 6 },
+  "permissions": { "permissions": [], "networkOrigins": [] },
+  "contributions": [
+    {
+      "kind": "tool",
+      "name": "roll_dice",
+      "description": "按骰子表达式掷骰，返回每颗骰子的点数与总和",
+      "verificationInput": { "expression": "2d6+1" }
+    },
+    {
+      "kind": "tool",
+      "name": "check_d100",
+      "description": "百分骰检定：掷 1d100，与目标值比较给出成功等级",
+      "verificationInput": { "target": 60, "label": "侦查" }
+    },
+    {
+      "kind": "tool",
+      "name": "draw_lots",
+      "description": "从给出的选项中随机抽取，不重复",
+      "verificationInput": { "options": ["火锅", "烧烤", "拉面"], "count": 1 }
+    }
+  ]
+}

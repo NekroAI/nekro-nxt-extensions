@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec prettier --check .
+      - run: pnpm check
+      - uses: actions/upload-artifact@v4
+        with:
+          name: extensions
+          path: dist/*.nxt-extension
+
+  verify:
+    # 用最新的 NekroNXT 预览版走一遍与用户导入相同的预检、构建与验证。
+    needs: check
+    runs-on: ubuntu-latest
+    env:
+      NXT_URL: http://127.0.0.1:4960
+      NXT_MANAGEMENT_KEY: ci-only-management-key-0123456789abcdef
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - uses: actions/download-artifact@v4
+        with:
+          name: extensions
+          path: dist
+      - name: Start NekroNXT
+        run: |
+          docker run -d --name nxt -p 4960:4960 -e NEKRO_MANAGEMENT_KEY="$NXT_MANAGEMENT_KEY" ghcr.io/nekroai/nekro-nxt:preview
+          for i in $(seq 1 90); do
+            if curl -fsS -o /dev/null "$NXT_URL/login"; then exit 0; fi
+            sleep 2
+          done
+          docker logs nxt
+          exit 1
+      - run: pnpm verify
+      - if: failure()
+        run: docker logs nxt | tail -200

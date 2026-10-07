@@ -1,0 +1,8 @@
+allowBuilds:
+  esbuild: true
+# 官方包刚发布时也直接使用。
+minimumReleaseAgeExclude:
+  - '@nekro-nxt/*'
+# 临时：npm 批准 contracts 0.2.0 与 extension-sdk 0.1.0 之前使用本地打包文件。
+overrides:
+  '@nekro-nxt/contracts': file:./vendor/nekro-nxt-contracts-0.2.0.tgz
