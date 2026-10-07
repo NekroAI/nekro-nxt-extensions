@@ -78,4 +78,10 @@ describe('消息守卫', () => {
     expect(await host.inbound({ text: '普通消息', mentionsAgent: false, wouldTrigger: false })).toBeUndefined()
     expect(host.calls).toEqual([])
   })
+
+  it('treats messages without text as empty instead of failing', async () => {
+    const host = await createTestHost(factory, { config: { blockedKeywords: ['广告'] } })
+    // 例如只有图片的消息：宿主可能不给文本。
+    expect(await host.inbound({ text: undefined as unknown as string })).toBeUndefined()
+  })
 })

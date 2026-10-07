@@ -1,6 +1,11 @@
 import { defineHostExtension } from '@nekro-nxt/extension-sdk'
 
-/** 网页阅读：宿主负责受控联网与 HTML 解析，扩展负责输入检查和结果长度。 */
+/**
+ * 网页阅读：宿主负责受控联网与 HTML 解析，扩展负责输入检查和结果长度。
+ *
+ * 联网一律走 ctx.nxt.http.fetch：宿主在所有网络模式下拦截回环、内网与云元数据地址，并逐跳检查重定向，
+ * 所以即使声明了 unrestricted，群聊中的人也无法借它访问内网。扩展不要自己绕开它使用全局 fetch。
+ */
 type ReadArgs = { readonly url?: string; readonly mode?: 'article' | 'full'; readonly maxChars?: number }
 type ReadResult =
   | {

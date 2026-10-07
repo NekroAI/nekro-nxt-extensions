@@ -1,6 +1,7 @@
 {
-  "revisionNumber": 1,
-  "revisionId": "xrv_01M4B90FDPTB4G3468BPDT02GW",
-  "payloadDigest": "75cb808ca662470b44df53263f190dadbd8abfc6a1a75a49fcd986f07a2883e1",
-  "createdAt": 1791379914166
+  "revisionNumber": 2,
+  "revisionId": "xrv_01M4BDTCN4VRHSS8WPM58YS1GB",
+  "payloadDigest": "fc8576814b4be75418a14586567f675dbc2fe0f170fcc48ccae10d604a93368d",
+  "createdAt": 1791384957604,
+  "notes": "没有文字的消息（例如只有图片）按空文本处理，不再可能报错。"
 }

@@ -1,6 +1,7 @@
 {
-  "revisionNumber": 1,
-  "revisionId": "xrv_01M4B93SJRE7FBFXGWAP83933G",
-  "payloadDigest": "b72f9f62f1f4d19fd414fd7e0887f76eb9777f610bf4fd25038f340d0860df52",
-  "createdAt": 1791380022872
+  "revisionNumber": 2,
+  "revisionId": "xrv_01M4BDTCNEFCYHQCTHGHEM878J",
+  "payloadDigest": "33fc7d03c0491c3023d87f117da13202d7fd5032459713568b88b0776620f76b",
+  "createdAt": 1791384957614,
+  "notes": "补充说明联网边界：宿主拦截内网与云元数据地址并逐跳检查重定向，扩展不绕开宿主接口。"
 }

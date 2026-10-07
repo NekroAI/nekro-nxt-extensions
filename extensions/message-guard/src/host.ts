@@ -32,7 +32,7 @@ export default defineHostExtension(async ({ harness }) => {
   const wake = keywords(config['wakeKeywords'])
 
   harness.onInbound?.((message): NxtInboundDecision | undefined => {
-    const text = normalize(message.text)
+    const text = normalize(message.text ?? '')
     if (blocked.some((word) => text.includes(word))) return { trigger: 'suppress', hideFromAgent: true }
     if (silent.some((word) => text.includes(word))) return { trigger: 'suppress' }
     if (wake.some((word) => text.includes(word))) return { trigger: 'force' }
