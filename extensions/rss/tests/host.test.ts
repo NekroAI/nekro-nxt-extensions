@@ -480,7 +480,10 @@ describe('RSS 订阅', () => {
     const checking = host.call('check_feed_now')
     await vi.advanceTimersByTimeAsync(0)
     expect(await host.due(job)).toEqual({ wake: false })
-    await vi.advanceTimersByTimeAsync(8001)
+    // 逐步推进时钟直到检查结束：慢机器上超时计时器可能晚于第一次推进才登记。
+    let settled = false
+    void checking.finally(() => (settled = true))
+    for (let step = 0; step < 30 && !settled; step += 1) await vi.advanceTimersByTimeAsync(1000)
     expect((await checking).text).toContain('8 秒')
     const afterTimeout = await savedState(host)
     expect(afterTimeout.failures).toBe(1)
