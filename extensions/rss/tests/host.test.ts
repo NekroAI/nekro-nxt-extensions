@@ -477,8 +477,16 @@ describe('RSS 订阅', () => {
     const job = await subscribe(host)
     vi.useFakeTimers()
     slow = true
+    const fetchesBefore = host.calls.filter((call) => call.kind === 'fetch').length
     const checking = host.call('check_feed_now')
-    await vi.advanceTimersByTimeAsync(0)
+    // 等手动检查真正发出请求（已持有频道锁）后再让周期任务到期，它应当跳过而不是排队。
+    for (
+      let step = 0;
+      step < 50 && host.calls.filter((call) => call.kind === 'fetch').length === fetchesBefore;
+      step += 1
+    ) {
+      await vi.advanceTimersByTimeAsync(0)
+    }
     expect(await host.due(job)).toEqual({ wake: false })
     // 逐步推进时钟直到检查结束：慢机器上超时计时器可能晚于第一次推进才登记。
     let settled = false
