@@ -1,0 +1,53 @@
+{
+  "id": "ext_01M4B6TAC9X0K9BMQC226V1JWG",
+  "slug": "tts",
+  "displayName": "语音合成",
+  "description": "调用 OpenAI 兼容服务将文本合成为 MP3，返回音频供智能体发送；使用用户自己的 API Key，按服务商计费。",
+  "scope": "agent",
+  "createdAt": 1791378000000,
+  "requires": { "sdk": 6 },
+  "permissions": {
+    "permissions": [],
+    "networkOrigins": [],
+    "capabilities": { "network": { "mode": "config", "fields": ["endpoint"] }, "assets": { "write": true } }
+  },
+  "config": {
+    "schema": {
+      "type": "object",
+      "dict": {
+        "endpoint": {
+          "type": "string",
+          "meta": {
+            "description": "服务地址",
+            "default": "https://api.openai.com/v1",
+            "hint": "填写 API 基础地址，保留 /v1 等路径，不要填写完整语音端点；请选择可信服务并优先使用 HTTPS。"
+          }
+        },
+        "apiKey": {
+          "type": "string",
+          "meta": {
+            "description": "API Key",
+            "role": "secret",
+            "hint": "在所选服务商控制台创建，调用费用由此 Key 所属账号承担。"
+          }
+        },
+        "model": {
+          "type": "string",
+          "meta": { "description": "模型", "default": "tts-1", "hint": "填写服务商支持且当前 Key 有权调用的语音模型。" }
+        },
+        "voice": {
+          "type": "string",
+          "meta": { "description": "音色", "default": "alloy", "hint": "填写服务商和模型支持的音色名称。" }
+        }
+      }
+    }
+  },
+  "contributions": [
+    {
+      "kind": "tool",
+      "name": "speak",
+      "description": "将最多 1000 字的文本合成为 MP3，返回 assetId 供智能体发送",
+      "verificationInput": { "text": "" }
+    }
+  ]
+}

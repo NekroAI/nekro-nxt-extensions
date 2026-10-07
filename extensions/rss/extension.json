@@ -1,0 +1,94 @@
+{
+  "id": "ext_01M4B6TAC9RERQ6JYMYNB1G761",
+  "slug": "rss",
+  "displayName": "RSS 订阅",
+  "description": "按频道订阅 RSS 或 Atom，定期检查新内容，没有更新时不唤醒智能体；有更新时由智能体决定如何转述。",
+  "scope": "agent",
+  "createdAt": 1791378000000,
+  "requires": {
+    "sdk": 6
+  },
+  "permissions": {
+    "permissions": [],
+    "networkOrigins": [],
+    "capabilities": {
+      "network": {
+        "mode": "unrestricted",
+        "purpose": "取回用户通过工具订阅的任意公网 RSS 或 Atom 地址，并定期检查更新；订阅地址无法预先列出。"
+      },
+      "storage": {
+        "scopes": ["channel"]
+      },
+      "jobs": {
+        "runtime": {
+          "maxActive": 50
+        }
+      }
+    }
+  },
+  "config": {
+    "schema": {
+      "type": "object",
+      "dict": {
+        "intervalMinutes": {
+          "type": "union",
+          "list": [
+            {
+              "type": "const",
+              "value": 15
+            },
+            {
+              "type": "const",
+              "value": 30
+            },
+            {
+              "type": "const",
+              "value": 60
+            },
+            {
+              "type": "const",
+              "value": 180
+            }
+          ],
+          "meta": {
+            "description": "检查间隔（分钟）",
+            "default": 30,
+            "hint": "可选 15、30、60、180 分钟。新订阅使用当前配置；已有订阅需取消后重新订阅才能更换间隔。"
+          }
+        }
+      }
+    }
+  },
+  "contributions": [
+    {
+      "kind": "tool",
+      "name": "subscribe_feed",
+      "description": "校验并订阅当前频道的 RSS 或 Atom 地址",
+      "verificationInput": {
+        "url": ""
+      }
+    },
+    {
+      "kind": "tool",
+      "name": "list_feeds",
+      "description": "列出当前频道订阅、最近检查时间与最近一条新内容",
+      "verificationInput": {}
+    },
+    {
+      "kind": "tool",
+      "name": "unsubscribe_feed",
+      "description": "按地址或列表序号取消订阅及对应任务",
+      "verificationInput": {
+        "index": 0
+      }
+    },
+    {
+      "kind": "tool",
+      "name": "check_feed_now",
+      "description": "立即检查指定订阅或当前频道的全部订阅",
+      "verificationInput": {
+        "url": ""
+      }
+    }
+  ]
+}

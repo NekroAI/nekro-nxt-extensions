@@ -1,0 +1,75 @@
+{
+  "id": "ext_01M4B6TAC9WQVDC9QEYWZB5QQY",
+  "slug": "image-gen",
+  "displayName": "图片生成",
+  "description": "调用 OpenAI 兼容服务生成 PNG 图片，返回文件供智能体发送；使用用户自己的 API Key，按服务商计费。",
+  "scope": "agent",
+  "createdAt": 1791378000000,
+  "requires": { "sdk": 6 },
+  "permissions": {
+    "permissions": [],
+    "networkOrigins": [],
+    "capabilities": { "network": { "mode": "config", "fields": ["endpoint"] }, "assets": { "write": true } }
+  },
+  "config": {
+    "schema": {
+      "type": "object",
+      "dict": {
+        "endpoint": {
+          "type": "string",
+          "meta": {
+            "description": "服务地址",
+            "default": "https://api.openai.com/v1",
+            "hint": "填写 API 基础地址，保留 /v1 等路径，不要填写完整生成端点；请选择可信服务并优先使用 HTTPS。"
+          }
+        },
+        "apiKey": {
+          "type": "string",
+          "meta": {
+            "description": "API Key",
+            "role": "secret",
+            "hint": "在所选服务商控制台创建，调用费用由此 Key 所属账号承担。"
+          }
+        },
+        "model": {
+          "type": "string",
+          "meta": {
+            "description": "模型",
+            "default": "gpt-image-1",
+            "hint": "需为 gpt-image 系列，或兼容 output_format 参数与 1024x1024、1024x1536、1536x1024 尺寸、返回 b64_json 的接口，且当前 Key 有权调用。"
+          }
+        },
+        "size": {
+          "type": "union",
+          "list": [
+            { "type": "const", "value": "1024x1024" },
+            { "type": "const", "value": "1024x1536" },
+            { "type": "const", "value": "1536x1024" }
+          ],
+          "meta": { "description": "默认尺寸", "default": "1024x1024" }
+        },
+        "quality": {
+          "type": "union",
+          "list": [
+            { "type": "const", "value": "low" },
+            { "type": "const", "value": "medium" },
+            { "type": "const", "value": "high" }
+          ],
+          "meta": {
+            "description": "图片质量",
+            "default": "medium",
+            "hint": "质量越高越慢、费用越高；宿主单次请求 30 秒无响应会超时，遇到超时请改用较低质量。"
+          }
+        }
+      }
+    }
+  },
+  "contributions": [
+    {
+      "kind": "tool",
+      "name": "generate_image",
+      "description": "生成一张 PNG 图片，返回 assetId 供智能体发送",
+      "verificationInput": { "prompt": "" }
+    }
+  ]
+}

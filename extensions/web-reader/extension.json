@@ -1,0 +1,27 @@
+{
+  "id": "ext_01M4B6TAC9BDSF3E1MNFGX8EAH",
+  "slug": "web-reader",
+  "displayName": "网页阅读",
+  "description": "读取公开 HTML 网页，提取标题、Markdown 正文和少量链接。",
+  "scope": "agent",
+  "createdAt": 1791378000000,
+  "requires": { "sdk": 6 },
+  "permissions": {
+    "permissions": [],
+    "networkOrigins": [],
+    "capabilities": {
+      "network": {
+        "mode": "unrestricted",
+        "purpose": "读取用户提供的任意公网 HTML 页面并提取正文与链接；启用时需确认访问任意公网地址的风险。"
+      }
+    }
+  },
+  "contributions": [
+    {
+      "kind": "tool",
+      "name": "read_webpage",
+      "description": "读取公开网页的标题、Markdown 正文和少量链接",
+      "verificationInput": { "url": "https://example.com/" }
+    }
+  ]
+}

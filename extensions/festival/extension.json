@@ -1,0 +1,52 @@
+{
+  "id": "ext_01M4B6TAC9RDRYNSE2Y86ZMBJS",
+  "slug": "festival",
+  "displayName": "节日提醒",
+  "description": "每天上海时间 08:00 在节日当天提醒智能体问候，并可查询近期节日。内置 2026–2035 年农历节日日期，不需要联网。",
+  "scope": "agent",
+  "createdAt": 1791378000000,
+  "requires": {
+    "sdk": 6
+  },
+  "permissions": {
+    "permissions": [],
+    "networkOrigins": [],
+    "capabilities": {
+      "jobs": {
+        "declared": [
+          {
+            "id": "festival-morning",
+            "label": "节日早晨提醒",
+            "cron": "0 8 * * *",
+            "timezone": "Asia/Shanghai"
+          }
+        ]
+      }
+    }
+  },
+  "config": {
+    "schema": {
+      "type": "object",
+      "dict": {
+        "includeInternational": {
+          "type": "boolean",
+          "meta": {
+            "description": "包含国际节日",
+            "default": true,
+            "hint": "情人节、妇女节、劳动节、儿童节和圣诞节；关闭后不查询或提醒这些节日。"
+          }
+        }
+      }
+    }
+  },
+  "contributions": [
+    {
+      "kind": "tool",
+      "name": "upcoming_festivals",
+      "description": "查询包含今天在内的未来 1–90 天节日，默认 30 天",
+      "verificationInput": {
+        "days": 30
+      }
+    }
+  ]
+}
