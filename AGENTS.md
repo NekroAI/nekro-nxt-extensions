@@ -25,5 +25,6 @@
 2. `pnpm check` 通过后运行 `pnpm release:prepare <名称>` 生成 Revision；内容未变化时打包结果逐字节相同，CI 发现内容变化而 `release.json` 未更新会失败。
 3. 用一次性数据目录的 NekroNXT 运行 `pnpm verify`，确认通过导入验证。
 4. 在根 README 的「扩展一览」登记。
+5. 需要更新说明时，在 `release.json` 中写 `notes`（不影响包内容）；推送 `release-YYYY-MM-DD` 标签发布。
 
 提交信息使用 `type(scope): 中文主题`，类型为 `feat`、`fix`、`refactor`、`docs`、`test`。

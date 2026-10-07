@@ -1,0 +1,49 @@
+name: Release
+
+# 推送 release-YYYY-MM-DD 这样的标签时：检查 → 在 NekroNXT 预览版上导入验证 → 发布到社区 → 创建 GitHub Release。
+# 内容没有变化的扩展社区会跳过。需要仓库密钥 COMMUNITY_PUBLISH_TOKEN（社区后台「扩展 → 官方发布令牌」）。
+on:
+  push:
+    tags: ['release-*']
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      NXT_URL: http://127.0.0.1:4960
+      NXT_MANAGEMENT_KEY: ci-only-management-key-0123456789abcdef
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec prettier --check .
+      - run: pnpm check
+      - name: Start NekroNXT
+        run: |
+          docker run -d --name nxt -p 4960:4960 -e NEKRO_MANAGEMENT_KEY="$NXT_MANAGEMENT_KEY" ghcr.io/nekroai/nekro-nxt:preview
+          for i in $(seq 1 90); do
+            if curl -fsS -o /dev/null "$NXT_URL/login"; then exit 0; fi
+            sleep 2
+          done
+          docker logs nxt
+          exit 1
+      - run: pnpm verify
+      - name: Publish to the community
+        env:
+          COMMUNITY_PUBLISH_TOKEN: ${{ secrets.COMMUNITY_PUBLISH_TOKEN }}
+        run: pnpm publish:community
+      - name: GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" dist/*.nxt-extension --title "$GITHUB_REF_NAME" --notes "官方种子扩展包，可在 NekroNXT「工坊 → 导入」中导入，或在「社区 → 发现」中筛选官方安装。"

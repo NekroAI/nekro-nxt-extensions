@@ -37,6 +37,8 @@ docker run --rm -d -p 4960:4960 -e NEKRO_MANAGEMENT_KEY=<至少32个字符> ghcr
 NXT_MANAGEMENT_KEY=<同上> pnpm verify
 ```
 
+发布：推送 `release-YYYY-MM-DD` 标签后，CI 检查并在 NekroNXT 预览版上验证，然后以官方身份发布到社区（内容没有变化的扩展会跳过），并创建附带全部扩展包的 GitHub Release。需要仓库密钥 `COMMUNITY_PUBLISH_TOKEN`，由社区管理员在后台「扩展 → 官方发布令牌」创建。
+
 编写约定见 [AGENTS.md](AGENTS.md)。
 
 ## 许可

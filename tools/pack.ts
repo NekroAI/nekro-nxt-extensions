@@ -48,6 +48,8 @@ const LockSchema = z
     revisionId: z.string().regex(/^xrv_[0-9A-Za-z]+$/u),
     payloadDigest: z.string().regex(/^[a-f0-9]{64}$/u),
     createdAt: z.number().int().positive(),
+    /** 发布到社区时的更新说明；不影响包内容。 */
+    notes: z.string().max(2000).optional(),
   })
   .strict()
 
