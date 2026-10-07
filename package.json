@@ -19,9 +19,9 @@
     "node": ">=22"
   },
   "devDependencies": {
-    "@nekro-nxt/contracts": "file:vendor/nekro-nxt-contracts-0.2.0.tgz",
+    "@nekro-nxt/contracts": "0.2.0",
     "@nekro-nxt/extension-format": "0.1.0",
-    "@nekro-nxt/extension-sdk": "file:vendor/nekro-nxt-extension-sdk-0.1.0.tgz",
+    "@nekro-nxt/extension-sdk": "0.1.1",
     "@types/node": "^22.20.5",
     "@types/react": "18.3.31",
     "fflate": "0.8.3",
