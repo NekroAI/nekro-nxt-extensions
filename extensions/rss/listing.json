@@ -1,0 +1,5 @@
+{
+  "summary": "在对话里订阅 RSS 或 Atom 源，定时检查，有新文章时由智能体转述，没有更新时不打扰。",
+  "tags": ["RSS", "订阅", "资讯", "定时", "联网"],
+  "sourceUrl": "https://github.com/NekroAI/nekro-nxt-extensions/tree/main/extensions/rss"
+}

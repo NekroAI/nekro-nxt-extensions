@@ -1,0 +1,5 @@
+{
+  "summary": "让智能体搜索网络上的最新信息并注明来源。支持博查、Tavily 和自建 SearXNG，填好服务地址与 API Key 即可。",
+  "tags": ["搜索", "联网", "资讯", "博查", "Tavily", "SearXNG"],
+  "sourceUrl": "https://github.com/NekroAI/nekro-nxt-extensions/tree/main/extensions/web-search"
+}

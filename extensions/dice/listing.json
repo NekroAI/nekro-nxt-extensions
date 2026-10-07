@@ -1,0 +1,5 @@
+{
+  "summary": "掷骰子、跑团百分骰检定和随机抽签，结果由程序随机决定，智能体负责播报。无需配置。",
+  "tags": ["跑团", "骰子", "抽签", "随机", "游戏"],
+  "sourceUrl": "https://github.com/NekroAI/nekro-nxt-extensions/tree/main/extensions/dice"
+}

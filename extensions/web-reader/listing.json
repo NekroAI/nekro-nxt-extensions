@@ -1,0 +1,5 @@
+{
+  "summary": "把网页链接发给智能体，它会读取标题和正文后帮你总结、翻译或回答问题。无需 API Key。",
+  "tags": ["网页", "阅读", "联网", "总结"],
+  "sourceUrl": "https://github.com/NekroAI/nekro-nxt-extensions/tree/main/extensions/web-reader"
+}

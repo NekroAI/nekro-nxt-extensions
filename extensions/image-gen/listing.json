@@ -1,0 +1,5 @@
+{
+  "summary": "让智能体按描述画图并发到对话里。使用你自己的 OpenAI 或兼容服务 API Key，按服务商计费。",
+  "tags": ["图片", "绘画", "AI 生图", "OpenAI"],
+  "sourceUrl": "https://github.com/NekroAI/nekro-nxt-extensions/tree/main/extensions/image-gen"
+}

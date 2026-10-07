@@ -36,7 +36,11 @@ pnpm verify           # 把 dist/ 中的包导入一个运行中的 NekroNXT 验
 - `src/host.ts`（以及需要界面时的 `src/client.ts`）：单文件源码，只导入 `@nekro-nxt/extension-sdk`；
 - `tests/`：用 [`tools/testing.ts`](tools/testing.ts) 的内存替身做的单元测试；
 - `release.json`：当前 Revision 的锁定记录，由 `pnpm release:prepare` 维护；
-- `README.md`：给使用者的说明。
+- `README.md`：给使用者的说明，去掉标题后作为社区页面的介绍；
+- `listing.json`：社区条目的一句话简介（≤160 字）、标签（≤8 个）与源码地址；
+- `assets/icon.svg|png|webp`（可选）：扩展图标，需要 `@nekro-nxt/extension-format` 0.2.0 起才能打包。
+
+`README.md` 与 `listing.json` 不进扩展包，修改它们不会产生新 Revision。
 
 `pnpm verify` 需要一个使用一次性数据目录的 NekroNXT，例如：
 
@@ -45,7 +49,7 @@ docker run --rm -d -p 4960:4960 -e NEKRO_MANAGEMENT_KEY=<至少32个字符> ghcr
 NXT_MANAGEMENT_KEY=<同上> pnpm verify
 ```
 
-发布：推送 `release-YYYY-MM-DD` 标签后，CI 检查并在 NekroNXT 预览版上验证，然后以官方身份发布到社区（内容没有变化的扩展会跳过），并创建附带全部扩展包的 GitHub Release。需要仓库密钥 `COMMUNITY_PUBLISH_TOKEN`，由社区管理员在后台「扩展 → 官方发布令牌」创建。
+发布：推送 `release-YYYY-MM-DD` 标签后，CI 检查并在 NekroNXT 预览版上验证，然后以官方身份发布到社区（内容没有变化的扩展会跳过），并创建附带全部扩展包的 GitHub Release。发布时一并提交条目信息（简介、介绍、标签、源码地址）；只改了说明而包内容没变时，用 `COMMUNITY_PUBLISH_TOKEN=<令牌> pnpm listing:sync [名称...]` 单独更新（`--dry-run` 预览要提交的内容）。需要仓库密钥 `COMMUNITY_PUBLISH_TOKEN`，由社区管理员在后台「扩展 → 官方发布令牌」创建。
 
 编写约定见 [AGENTS.md](AGENTS.md)。
 

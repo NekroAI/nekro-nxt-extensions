@@ -1,3 +1,3 @@
 import { defineConfig } from 'vitest/config'
 
-export default defineConfig({ test: { include: ['extensions/*/tests/**/*.test.ts'] } })
+export default defineConfig({ test: { include: ['extensions/*/tests/**/*.test.ts', 'tools/tests/**/*.test.ts'] } })

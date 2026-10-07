@@ -12,7 +12,8 @@
     "verify": "tsx tools/verify.ts",
     "check": "pnpm typecheck && pnpm test && pnpm build",
     "format": "prettier --write .",
-    "publish:community": "tsx tools/publish.ts"
+    "publish:community": "tsx tools/publish.ts",
+    "listing:sync": "tsx tools/listing-sync.ts"
   },
   "packageManager": "pnpm@11.7.0",
   "engines": {
