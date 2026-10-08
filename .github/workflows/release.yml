@@ -43,6 +43,10 @@ jobs:
         env:
           COMMUNITY_PUBLISH_TOKEN: ${{ secrets.COMMUNITY_PUBLISH_TOKEN }}
         run: pnpm publish:community
+      - name: Sync listing info
+        env:
+          COMMUNITY_PUBLISH_TOKEN: ${{ secrets.COMMUNITY_PUBLISH_TOKEN }}
+        run: pnpm listing:sync
       - name: GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
