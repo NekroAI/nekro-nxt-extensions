@@ -38,7 +38,7 @@ pnpm verify           # 把 dist/ 中的包导入一个运行中的 NekroNXT 验
 - `release.json`：当前 Revision 的锁定记录，由 `pnpm release:prepare` 维护；
 - `README.md`：给使用者的说明，去掉标题后作为社区页面的介绍；
 - `listing.json`：社区条目的一句话简介（≤160 字）、标签（≤8 个）与源码地址；
-- `assets/icon.svg|png|webp`（可选）：扩展图标，需要 `@nekro-nxt/extension-format` 0.2.0 起才能打包。
+- `assets/icon.svg|png|webp`（可选，只放一个）：扩展图标，正方形 64–512 像素、不超过 128 KiB，在工坊、社区和智能体的扩展列表中显示。
 
 `README.md` 与 `listing.json` 不进扩展包，修改它们不会产生新 Revision。
 

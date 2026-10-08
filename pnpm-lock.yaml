@@ -12,8 +12,8 @@ importers:
         specifier: 0.2.0
         version: 0.2.0
       '@nekro-nxt/extension-format':
-        specifier: 0.1.0
-        version: 0.1.0
+        specifier: 0.2.0
+        version: 0.2.0
       '@nekro-nxt/extension-sdk':
         specifier: 0.1.1
         version: 0.1.1(@types/react@18.3.31)
@@ -203,14 +203,11 @@ packages:
   '@jridgewell/sourcemap-codec@1.6.0':
     resolution: {integrity: sha512-T7jf+5zgsZHwNJ4lvQ7/aezbyk0nNX+zJVWpmHA7VYsEx7a7qr5Rg5IbtJFqkgze5Y2sruq1RUY8Q837Od7iFw==}
 
-  '@nekro-nxt/contracts@0.1.0':
-    resolution: {integrity: sha512-bOEk0DWnzzwSaWvakm9y7jyORpfPXjeoNeik6SeL03yeL1sRiZBNAWYBmG4mWdqsKzsWqJWvfGMTmrr+2d4ksQ==}
-
   '@nekro-nxt/contracts@0.2.0':
     resolution: {integrity: sha512-GxCrIglw5X0d0Akehs+v4ngTSNOSogqAl03LTICFpp86Vv7IXI45VT6OXvTsgLbaLX8ZLOgNoFKH5oTDi01GTA==}
 
-  '@nekro-nxt/extension-format@0.1.0':
-    resolution: {integrity: sha512-LGFVVME2pluWm/zAgeFqmOKylihCInAi3L6fjxlFZ5d5lBJGJQCdOG19fiD011cRZQVs8OPwovfbRld9qm6K/w==}
+  '@nekro-nxt/extension-format@0.2.0':
+    resolution: {integrity: sha512-aWQBsm3uFZjBy70nefFRORhJ/yGSXHb5L/rGONH/v02h1rPVM0uJ/G6NMkNoeAenDerTTTpHC9ePM0zhi2wBQQ==}
 
   '@nekro-nxt/extension-sdk@0.1.1':
     resolution: {integrity: sha512-w/z5LAkADT45hoZUtIs1aIMyz0zPtbvTTutychWh+DinWXTY64r5IS7xnpdvU8gu43livVQ7kj7v6hHEsl2rAQ==}
@@ -755,17 +752,13 @@ snapshots:
 
   '@jridgewell/sourcemap-codec@1.6.0': {}
 
-  '@nekro-nxt/contracts@0.1.0':
-    dependencies:
-      zod: 4.4.3
-
   '@nekro-nxt/contracts@0.2.0':
     dependencies:
       zod: 4.4.3
 
-  '@nekro-nxt/extension-format@0.1.0':
+  '@nekro-nxt/extension-format@0.2.0':
     dependencies:
-      '@nekro-nxt/contracts': 0.1.0
+      '@nekro-nxt/contracts': 0.2.0
       '@noble/hashes': 2.3.0
       fflate: 0.8.3
       postcss: 8.5.26

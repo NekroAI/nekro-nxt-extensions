@@ -1,8 +1,8 @@
-import { cpSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { createHash } from 'node:crypto'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
-import { unzipSync } from 'fflate'
+import { strFromU8, unzipSync } from 'fflate'
 import { afterEach, describe, expect, it } from 'vitest'
 import { EXTENSIONS } from '../listing.js'
 import { buildExtension, findIcon } from '../pack.js'
@@ -33,6 +33,7 @@ describe('打包', () => {
     expect(Buffer.from(after.bytes).equals(Buffer.from(before.bytes))).toBe(true)
     expect(Object.keys(unzipSync(after.bytes)).sort()).toEqual([
       'manifest.json',
+      'revision/assets/icon.png',
       'revision/manifest.json',
       'revision/source/host.ts',
     ])
@@ -40,6 +41,7 @@ describe('打包', () => {
 
   it('识别图标：PNG 资源值是 base64，摘要按原始字节计算', () => {
     const directory = copy('dice')
+    rmSync(path.join(directory, 'assets'), { recursive: true })
     expect(findIcon(directory)).toBeUndefined()
     writeIcon(directory, 'icon.png', PNG)
     const icon = findIcon(directory)
@@ -50,15 +52,19 @@ describe('打包', () => {
 
   it('同时放了多种格式的图标时报错', () => {
     const directory = copy('dice')
-    writeIcon(directory, 'icon.png', PNG)
     writeIcon(directory, 'icon.svg', new TextEncoder().encode('<svg xmlns="http://www.w3.org/2000/svg"/>'))
     expect(() => findIcon(directory)).toThrow(/只能放一个图标文件/u)
   })
 
-  it('依赖的扩展包格式不支持图标时，给出升级说明而不是悄悄丢掉图标', () => {
+  it('把图标以原始字节写进压缩包，并在 Manifest 中声明', () => {
     const directory = copy('dice')
-    writeIcon(directory, 'icon.png', PNG)
-    expect(() => buildExtension(directory, { bump: false })).toThrow(/不支持扩展图标/u)
+    const icon = new Uint8Array(readFileSync(path.join(directory, 'assets/icon.png')))
+    const files = unzipSync(buildExtension(directory, { bump: false }).bytes)
+    expect(files['revision/assets/icon.png']).toEqual(icon)
+    const manifest = JSON.parse(strFromU8(files['revision/manifest.json']!)) as {
+      icon?: { path: string; sha256: string }
+    }
+    expect(manifest.icon).toEqual({ path: 'assets/icon.png', sha256: createHash('sha256').update(icon).digest('hex') })
   })
 })
 
