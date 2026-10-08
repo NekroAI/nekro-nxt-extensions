@@ -21,7 +21,7 @@
 
 ## 流程
 
-1. 新扩展：在 `extensions/<名称>/` 写 `extension.json`、`src/host.ts`、`tests/host.test.ts` 与 `README.md`，`id` 用 `ext_` 加 26 位大写字母数字，创建后不再改变。
+1. 新扩展：在 `extensions/<名称>/` 写 `extension.json`、`src/host.ts`、`tests/host.test.ts`、`README.md` 与 `listing.json`，`id` 用 `ext_` 加 26 位大写字母数字，创建后不再改变。`README.md` 面向普通用户（一句话定位、能做什么、怎么用、配置与凭据、权限及原因、注意事项），不写开发术语，会作为社区页面的介绍；`listing.json` 写一句话简介、标签与源码地址。
 2. `pnpm check` 通过后运行 `pnpm release:prepare <名称>` 生成 Revision；内容未变化时打包结果逐字节相同，CI 发现内容变化而 `release.json` 未更新会失败。
 3. 用一次性数据目录的 NekroNXT 运行 `pnpm verify`，确认通过导入验证。
 4. 在根 README 的「扩展一览」登记。

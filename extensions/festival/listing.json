@@ -1,0 +1,5 @@
+{
+  "summary": "节日当天早上 8 点提醒智能体在群里问候，也能查询近期节日。内置 2026–2035 年农历节日，不需要联网。",
+  "tags": ["节日", "提醒", "农历", "定时", "群聊"],
+  "sourceUrl": "https://github.com/NekroAI/nekro-nxt-extensions/tree/main/extensions/festival"
+}

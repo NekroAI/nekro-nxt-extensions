@@ -3,7 +3,9 @@
  *
  * - `extension.json`：身份、展示信息与 Manifest 字段（权限、配置、贡献与验证样例）；
  * - `src/host.ts`、`src/client.ts`：单文件源码，只允许导入 `@nekro-nxt/extension-sdk`；
- * - `assets/`：可选的 Client CSS Module 与 SVG 等资源；
+ * - `assets/`：可选的 Client CSS Module 与 SVG 等资源；`assets/icon.svg|png|webp`（至多一个）是扩展图标，
+ *   写入 Manifest 的 `icon` 字段，PNG/WebP 以原始字节放进包内。需要 `@nekro-nxt/extension-format` 支持图标字段
+ *   （0.2.0 起）；依赖版本不支持时，放入图标文件会让打包失败并给出说明，没有图标文件时行为不变；
  * - `release.json`：当前 Revision 的锁定记录。内容变化后必须运行 `pnpm release:prepare` 生成新 Revision，
  *   未变化时重复打包得到逐字节相同的包。
  *
@@ -70,12 +72,38 @@ const newId = (prefix: 'xrv'): string => {
 
 const readText = (file: string): string | undefined => (existsSync(file) ? readFileSync(file, 'utf8') : undefined)
 
-const collectResources = (directory: string): Record<string, string> => {
+const ICON_PATHS = ['assets/icon.svg', 'assets/icon.png', 'assets/icon.webp'] as const
+
+export interface Icon {
+  readonly path: (typeof ICON_PATHS)[number]
+  /** 文件原始字节，按原样写入包内。 */
+  readonly bytes: Uint8Array
+  /** 内存中的资源值：SVG 是原文，PNG/WebP 是 base64。 */
+  readonly resource: string
+  /** 原始字节的 SHA-256，写入 Manifest。 */
+  readonly sha256: string
+}
+
+/** 找出扩展目录下的图标文件；同时放了多种格式时报错，避免打包结果取决于文件顺序。 */
+export const findIcon = (directory: string): Icon | undefined => {
+  const present = ICON_PATHS.filter((iconPath) => existsSync(path.join(directory, iconPath)))
+  if (present.length > 1) throw new Error(`只能放一个图标文件，现在有：${present.join('、')}。`)
+  const iconPath = present[0]
+  if (iconPath === undefined) return undefined
+  const bytes = new Uint8Array(readFileSync(path.join(directory, iconPath)))
+  const resource =
+    iconPath === 'assets/icon.svg' ? new TextDecoder().decode(bytes) : Buffer.from(bytes).toString('base64')
+  return { path: iconPath, bytes, resource, sha256: sha256Hex(bytes) }
+}
+
+const collectResources = (directory: string, icon: Icon | undefined): Record<string, string> => {
   const assets = path.join(directory, 'assets')
   if (!existsSync(assets)) return {}
   const resources: Record<string, string> = {}
   for (const name of readdirSync(assets).sort()) {
-    resources[`assets/${name}`] = readFileSync(path.join(assets, name), 'utf8')
+    const resourcePath = `assets/${name}`
+    resources[resourcePath] =
+      resourcePath === icon?.path ? icon.resource : readFileSync(path.join(assets, name), 'utf8')
   }
   return resources
 }
@@ -96,34 +124,49 @@ export const buildExtension = (directory: string, options: { readonly bump: bool
     ...(host === undefined ? {} : { host: normalizeSource(host) }),
     ...(client === undefined ? {} : { client: normalizeSource(client) }),
   }
-  const resources = collectResources(directory)
+  const icon = findIcon(directory)
+  const resources = collectResources(directory, icon)
   const lockFile = path.join(directory, 'release.json')
   const lockText = readText(lockFile)
   const previous = lockText === undefined ? undefined : LockSchema.parse(JSON.parse(lockText))
 
-  const manifestFor = (revisionId: string) =>
-    extensionManifestSchema.parse({
-      schemaVersion: 6,
-      scope: definition.scope,
-      extensionId: definition.id,
-      revisionId,
-      entrypoints: {
-        ...(sources.host === undefined ? {} : { host: 'source/host.ts' }),
-        ...(sources.client === undefined ? {} : { client: 'source/client.ts' }),
-      },
-      ...(definition.requires === undefined ? {} : { requires: definition.requires }),
-      ...(definition.permissions === undefined ? {} : { permissions: definition.permissions }),
-      ...(definition.config === undefined ? {} : { config: definition.config }),
-      ...(definition.clientCss === undefined
-        ? {}
-        : {
-            clientCss: {
-              path: definition.clientCss,
-              sha256: sha256Hex(resources[definition.clientCss] ?? ''),
-            },
-          }),
-      contributions: definition.contributions,
-    })
+  const manifestFields = (revisionId: string) => ({
+    schemaVersion: 6,
+    scope: definition.scope,
+    extensionId: definition.id,
+    revisionId,
+    entrypoints: {
+      ...(sources.host === undefined ? {} : { host: 'source/host.ts' }),
+      ...(sources.client === undefined ? {} : { client: 'source/client.ts' }),
+    },
+    ...(definition.requires === undefined ? {} : { requires: definition.requires }),
+    ...(definition.permissions === undefined ? {} : { permissions: definition.permissions }),
+    ...(definition.config === undefined ? {} : { config: definition.config }),
+    ...(definition.clientCss === undefined
+      ? {}
+      : {
+          clientCss: {
+            path: definition.clientCss,
+            sha256: sha256Hex(resources[definition.clientCss] ?? ''),
+          },
+        }),
+    contributions: definition.contributions,
+    ...(icon === undefined ? {} : { icon: { path: icon.path, sha256: icon.sha256 } }),
+  })
+  const manifestFor = (revisionId: string) => {
+    const fields = manifestFields(revisionId)
+    const parsed = extensionManifestSchema.safeParse(fields)
+    if (parsed.success) return parsed.data
+    if (icon !== undefined) {
+      const { icon: _icon, ...withoutIcon } = fields
+      if (extensionManifestSchema.safeParse(withoutIcon).success) {
+        throw new Error(
+          `当前依赖的 @nekro-nxt/extension-format 不支持扩展图标（${icon.path}）。升级到支持 icon 字段的版本（0.2.0 起）后再打包，或先移除图标文件。`,
+        )
+      }
+    }
+    throw parsed.error
+  }
 
   // payloadDigest 不含身份，可以先用旧 Revision 的身份计算，判断内容是否变化。
   const probe = revisionDigests({ manifest: manifestFor(previous?.revisionId ?? 'xrv_PROBE'), sources, resources })
@@ -150,7 +193,10 @@ export const buildExtension = (directory: string, options: { readonly bump: bool
   }
   if (sources.host !== undefined) files['revision/source/host.ts'] = strToU8(sources.host)
   if (sources.client !== undefined) files['revision/source/client.ts'] = strToU8(sources.client)
-  for (const [resourcePath, content] of Object.entries(resources)) files[`revision/${resourcePath}`] = strToU8(content)
+  for (const [resourcePath, content] of Object.entries(resources)) {
+    // PNG/WebP 图标在包内是原始字节，内存中的资源值才是 base64。
+    files[`revision/${resourcePath}`] = resourcePath === icon?.path ? icon.bytes : strToU8(content)
+  }
   const transfer = {
     schemaVersion: 1,
     kind: 'nekro-nxt-extension',

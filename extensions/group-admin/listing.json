@@ -1,0 +1,5 @@
+{
+  "summary": "让智能体按群主或管理员的要求在 OneBot 11 群聊中禁言、解除禁言、移出成员或修改群名片。",
+  "tags": ["群管理", "禁言", "OneBot", "QQ", "群聊"],
+  "sourceUrl": "https://github.com/NekroAI/nekro-nxt-extensions/tree/main/extensions/group-admin"
+}

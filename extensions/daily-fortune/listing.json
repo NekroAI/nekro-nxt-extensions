@@ -1,0 +1,5 @@
+{
+  "summary": "群聊每日签到：为发言成员生成运势卡片，含幸运数字、宜忌和连续签到天数，同一天结果固定。仅供娱乐。",
+  "tags": ["娱乐", "签到", "运势", "群聊", "图片"],
+  "sourceUrl": "https://github.com/NekroAI/nekro-nxt-extensions/tree/main/extensions/daily-fortune"
+}

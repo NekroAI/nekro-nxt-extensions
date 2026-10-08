@@ -1,0 +1,5 @@
+{
+  "summary": "让智能体把文字读出来，以语音消息发送。使用你自己的 OpenAI 或兼容服务 API Key，按服务商计费。",
+  "tags": ["语音", "朗读", "TTS", "OpenAI"],
+  "sourceUrl": "https://github.com/NekroAI/nekro-nxt-extensions/tree/main/extensions/tts"
+}

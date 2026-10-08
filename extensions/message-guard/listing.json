@@ -1,0 +1,5 @@
+{
+  "summary": "按关键词控制智能体：对它隐藏某些消息、不触发回复，或不用 @ 也能唤醒它。消息仍保留在频道记录中。",
+  "tags": ["关键词", "过滤", "唤醒", "群聊", "消息"],
+  "sourceUrl": "https://github.com/NekroAI/nekro-nxt-extensions/tree/main/extensions/message-guard"
+}
