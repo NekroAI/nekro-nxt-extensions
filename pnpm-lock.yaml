@@ -4,19 +4,24 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+overrides:
+  '@nekro-nxt/contracts': file:/private/tmp/claude-501/-Users-miose-Projects-nekro-nxt/c91b7983-d77b-48b5-9308-be5c9ecfaa4a/scratchpad/tarballs/nekro-nxt-contracts-0.3.0.tgz
+  '@nekro-nxt/extension-format': file:/private/tmp/claude-501/-Users-miose-Projects-nekro-nxt/c91b7983-d77b-48b5-9308-be5c9ecfaa4a/scratchpad/tarballs/nekro-nxt-extension-format-0.3.0.tgz
+  '@nekro-nxt/extension-sdk': file:/private/tmp/claude-501/-Users-miose-Projects-nekro-nxt/c91b7983-d77b-48b5-9308-be5c9ecfaa4a/scratchpad/tarballs/nekro-nxt-extension-sdk-0.2.0.tgz
+
 importers:
 
   .:
     devDependencies:
       '@nekro-nxt/contracts':
-        specifier: 0.2.0
-        version: 0.2.0
+        specifier: file:/private/tmp/claude-501/-Users-miose-Projects-nekro-nxt/c91b7983-d77b-48b5-9308-be5c9ecfaa4a/scratchpad/tarballs/nekro-nxt-contracts-0.3.0.tgz
+        version: file:../../../../private/tmp/claude-501/-Users-miose-Projects-nekro-nxt/c91b7983-d77b-48b5-9308-be5c9ecfaa4a/scratchpad/tarballs/nekro-nxt-contracts-0.3.0.tgz
       '@nekro-nxt/extension-format':
-        specifier: 0.2.0
-        version: 0.2.0
+        specifier: file:/private/tmp/claude-501/-Users-miose-Projects-nekro-nxt/c91b7983-d77b-48b5-9308-be5c9ecfaa4a/scratchpad/tarballs/nekro-nxt-extension-format-0.3.0.tgz
+        version: file:../../../../private/tmp/claude-501/-Users-miose-Projects-nekro-nxt/c91b7983-d77b-48b5-9308-be5c9ecfaa4a/scratchpad/tarballs/nekro-nxt-extension-format-0.3.0.tgz
       '@nekro-nxt/extension-sdk':
-        specifier: 0.1.1
-        version: 0.1.1(@types/react@18.3.31)
+        specifier: file:/private/tmp/claude-501/-Users-miose-Projects-nekro-nxt/c91b7983-d77b-48b5-9308-be5c9ecfaa4a/scratchpad/tarballs/nekro-nxt-extension-sdk-0.2.0.tgz
+        version: file:../../../../private/tmp/claude-501/-Users-miose-Projects-nekro-nxt/c91b7983-d77b-48b5-9308-be5c9ecfaa4a/scratchpad/tarballs/nekro-nxt-extension-sdk-0.2.0.tgz(@types/react@18.3.31)
       '@types/node':
         specifier: ^22.20.5
         version: 22.20.5
@@ -203,14 +208,17 @@ packages:
   '@jridgewell/sourcemap-codec@1.6.0':
     resolution: {integrity: sha512-T7jf+5zgsZHwNJ4lvQ7/aezbyk0nNX+zJVWpmHA7VYsEx7a7qr5Rg5IbtJFqkgze5Y2sruq1RUY8Q837Od7iFw==}
 
-  '@nekro-nxt/contracts@0.2.0':
-    resolution: {integrity: sha512-GxCrIglw5X0d0Akehs+v4ngTSNOSogqAl03LTICFpp86Vv7IXI45VT6OXvTsgLbaLX8ZLOgNoFKH5oTDi01GTA==}
+  '@nekro-nxt/contracts@file:../../../../private/tmp/claude-501/-Users-miose-Projects-nekro-nxt/c91b7983-d77b-48b5-9308-be5c9ecfaa4a/scratchpad/tarballs/nekro-nxt-contracts-0.3.0.tgz':
+    resolution: {integrity: sha512-26SJpAJ4AcSqTld3srViGtdgNjGN+qlMICgfCD7aAG4IrPz/0VWSyRAAT19B3udZ2YT6Y1fP/9d3ppPNWMEOnA==, tarball: file:../../../../private/tmp/claude-501/-Users-miose-Projects-nekro-nxt/c91b7983-d77b-48b5-9308-be5c9ecfaa4a/scratchpad/tarballs/nekro-nxt-contracts-0.3.0.tgz}
+    version: 0.3.0
 
-  '@nekro-nxt/extension-format@0.2.0':
-    resolution: {integrity: sha512-aWQBsm3uFZjBy70nefFRORhJ/yGSXHb5L/rGONH/v02h1rPVM0uJ/G6NMkNoeAenDerTTTpHC9ePM0zhi2wBQQ==}
+  '@nekro-nxt/extension-format@file:../../../../private/tmp/claude-501/-Users-miose-Projects-nekro-nxt/c91b7983-d77b-48b5-9308-be5c9ecfaa4a/scratchpad/tarballs/nekro-nxt-extension-format-0.3.0.tgz':
+    resolution: {integrity: sha512-uRmXb8BSlYIp4osvAZ5qmKMfeSZ1cZ7zAVbQCu3fFxWipgUQPITH8j8Y5945xuCybmm8EN+PnzShPwer4XnLew==, tarball: file:../../../../private/tmp/claude-501/-Users-miose-Projects-nekro-nxt/c91b7983-d77b-48b5-9308-be5c9ecfaa4a/scratchpad/tarballs/nekro-nxt-extension-format-0.3.0.tgz}
+    version: 0.3.0
 
-  '@nekro-nxt/extension-sdk@0.1.1':
-    resolution: {integrity: sha512-w/z5LAkADT45hoZUtIs1aIMyz0zPtbvTTutychWh+DinWXTY64r5IS7xnpdvU8gu43livVQ7kj7v6hHEsl2rAQ==}
+  '@nekro-nxt/extension-sdk@file:../../../../private/tmp/claude-501/-Users-miose-Projects-nekro-nxt/c91b7983-d77b-48b5-9308-be5c9ecfaa4a/scratchpad/tarballs/nekro-nxt-extension-sdk-0.2.0.tgz':
+    resolution: {integrity: sha512-rK2DQoLpFH+WBtPnVdUTCxwzJVDMVFRH/FSYx5juI3lUZVRRnqJ1j9CEz8yCEZcAkNUpBlhTBP97C0/IPEt6/w==, tarball: file:../../../../private/tmp/claude-501/-Users-miose-Projects-nekro-nxt/c91b7983-d77b-48b5-9308-be5c9ecfaa4a/scratchpad/tarballs/nekro-nxt-extension-sdk-0.2.0.tgz}
+    version: 0.2.0
     peerDependencies:
       '@types/react': '>=18'
     peerDependenciesMeta:
@@ -752,21 +760,21 @@ snapshots:
 
   '@jridgewell/sourcemap-codec@1.6.0': {}
 
-  '@nekro-nxt/contracts@0.2.0':
+  '@nekro-nxt/contracts@file:../../../../private/tmp/claude-501/-Users-miose-Projects-nekro-nxt/c91b7983-d77b-48b5-9308-be5c9ecfaa4a/scratchpad/tarballs/nekro-nxt-contracts-0.3.0.tgz':
     dependencies:
       zod: 4.4.3
 
-  '@nekro-nxt/extension-format@0.2.0':
+  '@nekro-nxt/extension-format@file:../../../../private/tmp/claude-501/-Users-miose-Projects-nekro-nxt/c91b7983-d77b-48b5-9308-be5c9ecfaa4a/scratchpad/tarballs/nekro-nxt-extension-format-0.3.0.tgz':
     dependencies:
-      '@nekro-nxt/contracts': 0.2.0
+      '@nekro-nxt/contracts': file:../../../../private/tmp/claude-501/-Users-miose-Projects-nekro-nxt/c91b7983-d77b-48b5-9308-be5c9ecfaa4a/scratchpad/tarballs/nekro-nxt-contracts-0.3.0.tgz
       '@noble/hashes': 2.3.0
       fflate: 0.8.3
       postcss: 8.5.26
       zod: 4.4.3
 
-  '@nekro-nxt/extension-sdk@0.1.1(@types/react@18.3.31)':
+  '@nekro-nxt/extension-sdk@file:../../../../private/tmp/claude-501/-Users-miose-Projects-nekro-nxt/c91b7983-d77b-48b5-9308-be5c9ecfaa4a/scratchpad/tarballs/nekro-nxt-extension-sdk-0.2.0.tgz(@types/react@18.3.31)':
     dependencies:
-      '@nekro-nxt/contracts': 0.2.0
+      '@nekro-nxt/contracts': file:../../../../private/tmp/claude-501/-Users-miose-Projects-nekro-nxt/c91b7983-d77b-48b5-9308-be5c9ecfaa4a/scratchpad/tarballs/nekro-nxt-contracts-0.3.0.tgz
       zod: 4.4.3
     optionalDependencies:
       '@types/react': 18.3.31

@@ -1,6 +1,9 @@
 /**
  * 种子扩展的单元测试宿主：按 NekroNXT 的 Host 环境形状加载扩展，用内存替身代替网络、存储、模型与平台。
  *
+ * 与真实宿主一样分两层：factory 只执行一次（本机实例，拿到本机层 `nxt` 与 `config.host`），返回的插件挂载给
+ * 一个测试智能体（`ctx.nxt` 与 `ctx.config()` 是 `config.agent`）。本机层存储就是智能体层 `scope: 'shared'` 的数据。
+ *
  * 它只验证扩展自身的逻辑；权限声明、构建与导入验证由 `pnpm verify` 在真实 NekroNXT 上完成。
  */
 import type {
@@ -8,12 +11,14 @@ import type {
   ExtensionHostEnvironment,
   ExtensionJsonValue,
   ExtensionPluginFactory,
+  ExtensionRpcCaller,
   ExtensionRpcHandler,
   ExtensionToolDefinition,
   NxtCallContext,
   NxtFeed,
   NxtFetchInit,
   NxtFetchResponse,
+  NxtHostLayerService,
   NxtHostService,
   NxtInboundDecision,
   NxtInboundHandler,
@@ -35,7 +40,11 @@ import type {
 export type FetchHandler = (url: string, init: NxtFetchInit) => NxtFetchResponse | Promise<NxtFetchResponse>
 
 export interface TestHostOptions {
+  /** 本机配置（`config.host`），factory 中的 `harness.config()`。 */
+  readonly hostConfig?: Readonly<Record<string, ExtensionJsonValue>>
+  /** 测试智能体的配置（`config.agent`），挂载中的 `ctx.config()`。 */
   readonly config?: Readonly<Record<string, ExtensionJsonValue>>
+  /** 两层凭据字段不重名，这里按字段名一起给出。 */
   readonly secrets?: Readonly<Record<string, string>>
   readonly fetch?: FetchHandler
   readonly context?: Partial<NxtCallContext>
@@ -83,6 +92,7 @@ export const createTestHost = async (
   options: TestHostOptions = {},
 ) => {
   const now = options.now ?? (() => 1_800_000_000_000)
+  const hostConfig = options.hostConfig ?? {}
   const config = options.config ?? {}
   const tools = new Map<string, ExtensionToolDefinition>()
   const rpc = new Map<string, ExtensionRpcHandler>()
@@ -99,6 +109,8 @@ export const createTestHost = async (
     Promise.reject(new Error(`测试宿主没有提供 ${what}，请在 createTestHost 中传入。`))
 
   const nxt: NxtHostService = {
+    config: () => config,
+    members: { describe: async () => undefined },
     http: {
       fetch: async (url, init = {}) => {
         calls.push({ kind: 'fetch', target: url, input: init })
@@ -146,6 +158,7 @@ export const createTestHost = async (
         calls.push({ kind: 'raw', target: api, input: params })
         return { status: 'succeeded', message: '测试宿主已记录这次原始调用。' }
       },
+      selfPlatformUserId: async () => '10000',
     },
     jobs: {
       schedule: async (input: NxtJobScheduleInput) => {
@@ -199,6 +212,20 @@ export const createTestHost = async (
     },
   }
 
+  const shared = { scope: 'shared' } as const
+  const hostNxt: NxtHostLayerService = {
+    http: nxt.http,
+    secrets: nxt.secrets,
+    storage: {
+      get: (key) => nxt.storage.get(key, shared),
+      set: (key, value) => nxt.storage.set(key, value, shared),
+      delete: (key) => nxt.storage.delete(key, shared),
+      list: (listOptions) => nxt.storage.list({ ...shared, ...listOptions }),
+    },
+    render: nxt.render,
+    parse: nxt.parse,
+  }
+
   const environment: ExtensionHostEnvironment = {
     harness: {
       defineTool: (tool) => tool,
@@ -221,9 +248,10 @@ export const createTestHost = async (
         job = handler
         return () => (job = undefined)
       },
-      config: () => config,
+      config: () => hostConfig,
     },
-    config,
+    config: hostConfig,
+    nxt: hostNxt,
   }
 
   const plugin = await factory(environment)
@@ -235,6 +263,7 @@ export const createTestHost = async (
       },
     },
     ...(plugin.inject?.includes('nxt') ? { nxt } : {}),
+    config: () => config,
     effect: (fn) => {
       fn()
     },
@@ -243,6 +272,7 @@ export const createTestHost = async (
 
   return {
     nxt,
+    hostNxt,
     tools,
     calls,
     assets,
@@ -260,10 +290,11 @@ export const createTestHost = async (
         .join('\n')
       return { value, text }
     },
-    async rpc(method: string, input: ExtensionJsonValue = null) {
+    /** 像页面或面板一样调用界面数据接口；默认来自页面。 */
+    async rpc(method: string, input: ExtensionJsonValue = null, caller: ExtensionRpcCaller = { surface: 'page' }) {
       const handler = rpc.get(method)
       if (!handler) throw new Error(`没有注册 RPC ${method}`)
-      return handler(input)
+      return handler(input, caller)
     },
     async inbound(
       message: Partial<NxtInboundMessage> & { readonly text: string },

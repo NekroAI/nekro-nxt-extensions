@@ -2,22 +2,25 @@
 
 [NekroNXT](https://github.com/NekroAI/nekro-nxt) 官方维护的一批扩展：装上就能用，也是编写扩展时最直接的参考——每个扩展都只用公开 SDK，权限最小，带单元测试，并在真实的 NekroNXT 上通过与用户导入相同的验证。
 
-在 NekroNXT 的「社区 → 发现」中筛选「官方」即可安装；也可以从 [Releases](https://github.com/NekroAI/nekro-nxt-extensions/releases) 下载 `.nxt-extension` 包，在「工坊 → 导入」中导入。安装后不会自动启用，在智能体页面为需要的智能体启用。
+在 NekroNXT 的「社区 → 发现」中筛选「官方」即可安装；也可以从 [Releases](https://github.com/NekroAI/nekro-nxt-extensions/releases) 下载 `.nxt-extension` 包，在「工坊 → 导入」中导入。扩展安装到本机后，页面与本机配置立即可用；带有智能体能力的扩展还要在智能体页面为需要的智能体启用。
+
+这些扩展使用 NekroNXT 扩展格式 V7（需要支持 V7 的 NekroNXT）：一个扩展可以同时提供智能体工具、页面和面板，本机配置（如共用的 API Key）在安装时填写一次，所有智能体共用。
 
 ## 扩展一览
 
-| 扩展                                 | 能做什么                                    | 示范的能力                              |
-| ------------------------------------ | ------------------------------------------- | --------------------------------------- |
-| [掷骰与抽签](extensions/dice)        | 骰子表达式、百分骰检定、随机抽签            | 最小的纯工具扩展                        |
-| [网页搜索](extensions/web-search)    | 搜索网络并给出来源（博查、Tavily、SearXNG） | 凭据配置、按配置地址联网、静态提示      |
-| [网页阅读](extensions/web-reader)    | 读取网页正文并转为 Markdown                 | 任意公网访问、网页解析服务              |
-| [图片生成](extensions/image-gen)     | 用 OpenAI 兼容接口生成图片                  | 凭据配置、生成 Asset 交给智能体发送     |
-| [语音合成](extensions/tts)           | 把文字转成语音消息                          | 二进制响应、音频 Asset                  |
-| [今日运势](extensions/daily-fortune) | 每日运势卡片与连续签到                      | 成员作用域存储、SVG 渲染                |
-| [节日提醒](extensions/festival)      | 节日当天提醒智能体问候，查询近期节日        | Manifest 固定定时任务、到期处理 `onJob` |
-| [RSS 订阅](extensions/rss)           | 订阅源有新内容时让智能体转述                | 运行时定时任务、订阅源解析、频道存储    |
-| [群管助手](extensions/group-admin)   | 在群聊中禁言、移出成员、修改群名片          | 平台动作与风险分级                      |
-| [消息守卫](extensions/message-guard) | 按关键词隐藏、静默或强制唤醒                | 入站钩子                                |
+| 扩展                                     | 能做什么                                    | 示范的能力                                      |
+| ---------------------------------------- | ------------------------------------------- | ----------------------------------------------- |
+| [掷骰与抽签](extensions/dice)            | 骰子表达式、百分骰检定、随机抽签            | 最小的纯工具扩展                                |
+| [网页搜索](extensions/web-search)        | 搜索网络并给出来源（博查、Tavily、SearXNG） | 本机配置共用凭据、按配置地址联网、静态提示      |
+| [网页阅读](extensions/web-reader)        | 读取网页正文并转为 Markdown                 | 任意公网访问、网页解析服务                      |
+| [图片生成](extensions/image-gen)         | 用 OpenAI 兼容接口生成图片                  | 本机与智能体两层配置、生成 Asset 交给智能体发送 |
+| [语音合成](extensions/tts)               | 把文字转成语音消息                          | 本机与智能体两层配置、音频 Asset                |
+| [今日运势](extensions/daily-fortune)     | 每日运势卡片与连续签到                      | 成员作用域存储、SVG 渲染                        |
+| [节日提醒](extensions/festival)          | 节日当天提醒智能体问候，查询近期节日        | Manifest 固定定时任务、到期处理 `onJob`         |
+| [RSS 订阅](extensions/rss)               | 订阅源有新内容时让智能体转述                | 运行时定时任务、订阅源解析、频道面板            |
+| [群管助手](extensions/group-admin)       | 在群聊中禁言、移出成员、修改群名片          | 平台动作与风险分级                              |
+| [消息守卫](extensions/message-guard)     | 按关键词隐藏、静默或强制唤醒                | 入站钩子、本机配置共用规则                      |
+| [团队采购清单](extensions/purchase-list) | 智能体记录要买的东西，在页面上勾选已买      | 工具与页面同在一个扩展、共享数据、导航入口      |
 
 ## 开发
 

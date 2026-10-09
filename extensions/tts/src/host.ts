@@ -1,13 +1,19 @@
 import { defineHostExtension } from '@nekro-nxt/extension-sdk'
 
-/** 语音合成：把服务返回的 MP3 二进制交给宿主保存，结果不包含原文或凭据。 */
+/**
+ * 语音合成：把服务返回的 MP3 二进制交给宿主保存，结果不包含原文或凭据。
+ *
+ * 服务地址、API Key 与模型是本机配置（`config.host`），请求经本机层 `nxt` 发出；默认音色是每个智能体
+ * 自己的配置（`config.agent`）。
+ */
 type SpeakArgs = { readonly text?: string; readonly voice?: string }
-type SpeakConfig = { readonly endpoint?: string; readonly model?: string; readonly voice?: string }
+type ServiceConfig = { readonly endpoint?: string; readonly model?: string }
+type AgentConfig = { readonly voice?: string }
 type SpeakResult =
   | { readonly ok: true; readonly assetId: string; readonly mediaType: string }
   | { readonly ok: false; readonly message: string }
 
-export default defineHostExtension(async ({ harness }) => ({
+export default defineHostExtension(async ({ harness, nxt: host }) => ({
   inject: ['tools', 'nxt'],
   apply(ctx) {
     const nxt = ctx.nxt
@@ -43,10 +49,11 @@ export default defineHostExtension(async ({ harness }) => ({
           if (Array.from(input).length > 1000) return { ok: false, message: '朗读文本最多 1000 字，请缩短后再试。' }
           if (voice !== undefined && (typeof voice !== 'string' || !voice.trim()))
             return { ok: false, message: 'voice 需要是非空的音色名称。' }
-          const config = (harness.config?.() ?? {}) as SpeakConfig
+          const service = harness.config() as ServiceConfig
+          const preference = ctx.config() as AgentConfig
           let endpoint: URL
           try {
-            endpoint = new URL(config.endpoint ?? 'https://api.openai.com/v1')
+            endpoint = new URL(service.endpoint ?? 'https://api.openai.com/v1')
             if (
               !['http:', 'https:'].includes(endpoint.protocol) ||
               endpoint.username ||
@@ -61,14 +68,14 @@ export default defineHostExtension(async ({ harness }) => ({
               message: '语音服务地址无效，请填写 http/https API 基础地址，不要包含账号、密码、查询参数或片段。',
             }
           }
-          const model = config.model?.trim() || 'tts-1'
-          const wantedVoice = voice?.trim() || config.voice?.trim() || 'alloy'
+          const model = service.model?.trim() || 'tts-1'
+          const wantedVoice = voice?.trim() || preference.voice?.trim() || 'alloy'
           try {
-            const apiKey = await nxt.secrets.get('apiKey')
+            const apiKey = await host.secrets.get('apiKey')
             if (!apiKey?.trim())
               return { ok: false, message: '还没有配置语音服务的 API Key，请在扩展配置中填写后再合成。' }
             endpoint.pathname = `${endpoint.pathname.replace(/\/+$/u, '')}/audio/speech`
-            const response = await nxt.http.fetch(endpoint.toString(), {
+            const response = await host.http.fetch(endpoint.toString(), {
               method: 'POST',
               headers: { authorization: `Bearer ${apiKey}`, 'content-type': 'application/json', accept: 'audio/mpeg' },
               body: JSON.stringify({ model, input, voice: wantedVoice, response_format: 'mp3' }),

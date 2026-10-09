@@ -3,45 +3,44 @@
   "slug": "message-guard",
   "displayName": "消息守卫",
   "description": "按关键词对智能体隐藏消息、静默处理或强制唤醒。忽略大小写与全角半角差异，优先级为屏蔽、静默、唤醒。消息仍保留在频道记录中。",
-  "scope": "agent",
   "createdAt": 1791378000000,
-  "requires": { "sdk": 6 },
+  "requires": { "sdk": 7 },
   "permissions": {
     "permissions": [],
     "networkOrigins": [],
-    "capabilities": {
-      "inboundHook": { "reads": "all", "mayHide": true, "mayForceTrigger": true, "timeoutMs": 500 }
-    }
+    "agent": { "inboundHook": { "reads": "all", "mayHide": true, "mayForceTrigger": true, "timeoutMs": 500 } }
   },
   "config": {
-    "schema": {
-      "type": "object",
-      "dict": {
-        "blockedKeywords": {
-          "type": "array",
-          "inner": { "type": "string" },
-          "meta": {
-            "description": "屏蔽关键词",
-            "default": [],
-            "hint": "命中任一关键词则对智能体隐藏且不唤醒，频道记录仍保留。普通文字包含匹配，不是正则表达式；忽略大小写与全角半角，空项忽略。"
-          }
-        },
-        "silentKeywords": {
-          "type": "array",
-          "inner": { "type": "string" },
-          "meta": {
-            "description": "静默关键词",
-            "default": [],
-            "hint": "命中则本条消息不唤醒智能体，但之后仍可看到。优先级低于屏蔽，高于唤醒；匹配方式与屏蔽相同。"
-          }
-        },
-        "wakeKeywords": {
-          "type": "array",
-          "inner": { "type": "string" },
-          "meta": {
-            "description": "唤醒关键词",
-            "default": [],
-            "hint": "命中且未被屏蔽或静默时，即使未提及智能体也强制唤醒。匹配方式与屏蔽相同。"
+    "host": {
+      "schema": {
+        "type": "object",
+        "dict": {
+          "blockedKeywords": {
+            "type": "array",
+            "inner": { "type": "string" },
+            "meta": {
+              "description": "屏蔽关键词",
+              "default": [],
+              "hint": "命中任一关键词则对智能体隐藏且不唤醒，频道记录仍保留。普通文字包含匹配，不是正则表达式；忽略大小写与全角半角，空项忽略。"
+            }
+          },
+          "silentKeywords": {
+            "type": "array",
+            "inner": { "type": "string" },
+            "meta": {
+              "description": "静默关键词",
+              "default": [],
+              "hint": "命中则本条消息不唤醒智能体，但之后仍可看到。优先级低于屏蔽，高于唤醒；匹配方式与屏蔽相同。"
+            }
+          },
+          "wakeKeywords": {
+            "type": "array",
+            "inner": { "type": "string" },
+            "meta": {
+              "description": "唤醒关键词",
+              "default": [],
+              "hint": "命中且未被屏蔽或静默时，即使未提及智能体也强制唤醒。匹配方式与屏蔽相同。"
+            }
           }
         }
       }

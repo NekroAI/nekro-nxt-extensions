@@ -18,7 +18,7 @@ describe('图片生成', () => {
   })
 
   it('requests a key without network access', async () => {
-    for (const options of [{}, { secrets: { apiKey: ' ' } }, { config: { apiKey: 'not-a-secret' } }]) {
+    for (const options of [{}, { secrets: { apiKey: ' ' } }, { hostConfig: { apiKey: 'not-a-secret' } }]) {
       const host = await createTestHost(factory, options)
       expect((await host.call('generate_image', { prompt: '虚构狐狸' })).text).toContain('还没有配置')
       expect(host.calls).toEqual([])
@@ -52,12 +52,8 @@ describe('图片生成', () => {
   it('preserves base paths and respects configured size and overrides', async () => {
     const host = await createTestHost(factory, {
       secrets,
-      config: {
-        endpoint: 'https://images.example.com/proxy/v1///',
-        model: 'fixture-image',
-        size: '1024x1536',
-        quality: 'high',
-      },
+      hostConfig: { endpoint: 'https://images.example.com/proxy/v1///', model: 'fixture-image' },
+      config: { size: '1024x1536', quality: 'high' },
       fetch: success,
     })
     expect((await host.call('generate_image', { prompt: '示例' })).value).toMatchObject({ size: '1024x1536' })
@@ -93,13 +89,13 @@ describe('图片生成', () => {
     'https://example.com/v1?token=fixture',
     'https://example.com/v1#fragment',
   ])('rejects invalid service address %s', async (endpoint) => {
-    const host = await createTestHost(factory, { secrets, config: { endpoint } })
+    const host = await createTestHost(factory, { secrets, hostConfig: { endpoint } })
     expect((await host.call('generate_image', { prompt: '示例' })).text).toContain('服务地址无效')
     expect(host.calls).toEqual([])
   })
 
   it('falls back to the default model when it is blank', async () => {
-    const host = await createTestHost(factory, { secrets, config: { model: ' ' }, fetch: success })
+    const host = await createTestHost(factory, { secrets, hostConfig: { model: ' ' }, fetch: success })
     await host.call('generate_image', { prompt: '示例' })
     expect(JSON.parse((host.calls[0]?.input as { body: string }).body)).toMatchObject({ model: 'gpt-image-1' })
   })

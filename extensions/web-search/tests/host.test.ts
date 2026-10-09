@@ -14,7 +14,8 @@ describe('网页搜索', () => {
   it('searches Bocha with the secret and trims results', async () => {
     const host = await createTestHost(factory, {
       secrets: { apiKey: 'sk-fixture' },
-      config: { endpoint: 'https://api.bochaai.com', maxResults: 2 },
+      hostConfig: { endpoint: 'https://api.bochaai.com' },
+      config: { maxResults: 2 },
       fetch: () =>
         respond({
           code: 200,
@@ -54,14 +55,14 @@ describe('网页搜索', () => {
   it('supports Tavily and SearXNG by address', async () => {
     const tavily = await createTestHost(factory, {
       secrets: { apiKey: 'tvly-fixture' },
-      config: { endpoint: 'https://api.tavily.com' },
+      hostConfig: { endpoint: 'https://api.tavily.com' },
       fetch: () => respond({ results: [{ title: 'T', url: 'https://t.example.com', content: '内容' }] }),
     })
     expect((await tavily.call('web_search', { query: 'q', count: 3 })).text).toContain('（Tavily）')
     expect(tavily.calls[0]?.target).toBe('https://api.tavily.com/search')
 
     const searx = await createTestHost(factory, {
-      config: { endpoint: 'http://192.0.2.10:8080/searx' },
+      hostConfig: { endpoint: 'http://192.0.2.10:8080/searx' },
       fetch: () => respond({ results: [{ title: 'S', url: 'https://s.example.com', content: '内容' }] }),
     })
     expect((await searx.call('web_search', { query: '关键词', freshness: 'day' })).text).toContain('（SearXNG）')
@@ -85,7 +86,7 @@ describe('网页搜索', () => {
       },
     })
     expect((await broken.call('web_search', { query: 'q' })).text).toBe('搜索失败：网络不可用')
-    const invalid = await createTestHost(factory, { config: { endpoint: 'not a url' } })
+    const invalid = await createTestHost(factory, { hostConfig: { endpoint: 'not a url' } })
     expect((await invalid.call('web_search', { query: 'q' })).text).toContain('地址无效')
   })
 })

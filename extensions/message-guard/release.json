@@ -1,6 +1,7 @@
 {
-  "revisionNumber": 3,
-  "revisionId": "xrv_01M4BVQ7VRT8D9HY4J2BWE6XHG",
-  "payloadDigest": "5dc07435b55ddf1ed742649f87a4f7dcab9bed66235ca15b77b7fb5cb95fd64a",
-  "createdAt": 1791399534456
+  "revisionNumber": 4,
+  "revisionId": "xrv_01M4FEYTWQW6RNCENM1BCF3EWM",
+  "payloadDigest": "5c7c6f917a237d27f0236afe5cf54aa26ee5eee7ab7fd17d4aaa1b012fe9e7a1",
+  "createdAt": 1791520369559,
+  "notes": "迁移到 NekroNXT 扩展格式 V7，需要支持 V7 的 NekroNXT。关键词规则移到本机配置，所有启用消息守卫的智能体共用一套。升级后请在本机配置中重新填写关键词。"
 }

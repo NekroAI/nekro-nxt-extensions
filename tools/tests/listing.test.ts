@@ -38,6 +38,7 @@ describe('条目信息', () => {
       'group-admin',
       'image-gen',
       'message-guard',
+      'purchase-list',
       'rss',
       'tts',
       'web-reader',

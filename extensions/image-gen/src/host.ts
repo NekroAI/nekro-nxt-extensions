@@ -1,16 +1,17 @@
 import { defineHostExtension } from '@nekro-nxt/extension-sdk'
 
-/** 图片生成：凭据只从宿主读取，生成文件只返回 Asset，不直接在频道发言。 */
+/**
+ * 图片生成：凭据只从宿主读取，生成文件只返回 Asset，不直接在频道发言。
+ *
+ * 服务地址、API Key 与模型是本机配置（`config.host`），所有智能体共用一份，请求经本机层 `nxt` 发出；
+ * 尺寸与质量是每个智能体自己的偏好（`config.agent`），生成的图片作为该智能体的 Asset 保存。
+ */
 const SIZES = ['1024x1024', '1024x1536', '1536x1024'] as const
 type Size = (typeof SIZES)[number]
 type Quality = 'low' | 'medium' | 'high'
 type GenerateArgs = { readonly prompt?: string; readonly size?: Size }
-type GenerateConfig = {
-  readonly endpoint?: string
-  readonly model?: string
-  readonly size?: Size
-  readonly quality?: Quality
-}
+type ServiceConfig = { readonly endpoint?: string; readonly model?: string }
+type AgentConfig = { readonly size?: Size; readonly quality?: Quality }
 type GenerateResult =
   | { readonly ok: true; readonly assetId: string; readonly mediaType: string; readonly size: Size }
   | { readonly ok: false; readonly message: string }
@@ -20,7 +21,7 @@ const record = (value: unknown): Record<string, unknown> =>
 
 const isSize = (value: unknown): value is Size => SIZES.some((size) => size === value)
 
-export default defineHostExtension(async ({ harness }) => ({
+export default defineHostExtension(async ({ harness, nxt: host }) => ({
   inject: ['tools', 'nxt'],
   apply(ctx) {
     const nxt = ctx.nxt
@@ -52,10 +53,11 @@ export default defineHostExtension(async ({ harness }) => ({
           if (!description) return { ok: false, message: '请提供非空的图片描述 prompt。' }
           if (size !== undefined && !isSize(size))
             return { ok: false, message: 'size 只能是 1024x1024、1024x1536 或 1536x1024。' }
-          const config = (harness.config?.() ?? {}) as GenerateConfig
+          const service = harness.config() as ServiceConfig
+          const preference = ctx.config() as AgentConfig
           let endpoint: URL
           try {
-            endpoint = new URL(config.endpoint ?? 'https://api.openai.com/v1')
+            endpoint = new URL(service.endpoint ?? 'https://api.openai.com/v1')
             if (
               !['http:', 'https:'].includes(endpoint.protocol) ||
               endpoint.username ||
@@ -70,15 +72,15 @@ export default defineHostExtension(async ({ harness }) => ({
               message: '图片服务地址无效，请填写 http/https API 基础地址，不要包含账号、密码、查询参数或片段。',
             }
           }
-          const model = config.model?.trim() || 'gpt-image-1'
-          const wanted = size ?? config.size ?? '1024x1024'
-          const quality = config.quality ?? 'medium'
+          const model = service.model?.trim() || 'gpt-image-1'
+          const wanted = size ?? preference.size ?? '1024x1024'
+          const quality = preference.quality ?? 'medium'
           try {
-            const apiKey = await nxt.secrets.get('apiKey')
+            const apiKey = await host.secrets.get('apiKey')
             if (!apiKey?.trim())
               return { ok: false, message: '还没有配置图片服务的 API Key，请在扩展配置中填写后再生成。' }
             endpoint.pathname = `${endpoint.pathname.replace(/\/+$/u, '')}/images/generations`
-            const response = await nxt.http.fetch(endpoint.toString(), {
+            const response = await host.http.fetch(endpoint.toString(), {
               method: 'POST',
               headers: { authorization: `Bearer ${apiKey}`, 'content-type': 'application/json' },
               // GPT Image 默认返回 b64_json，不接受旧式 response_format 参数。

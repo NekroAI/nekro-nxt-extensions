@@ -46,9 +46,10 @@ const subscribe = async (host: Awaited<ReturnType<typeof createTestHost>>, url =
   if (!job) throw new Error('没有创建测试任务。')
   return job
 }
-const stateKey = (url: string) => `rss.state.${createHash('sha256').update(url).digest('hex')}`
+/** 共享存储中的键以「智能体/频道」开头；测试宿主的智能体与频道是 agt_TEST、chn_TEST。 */
+const stateKey = (url: string) => `rss/agt_TEST/chn_TEST/state/${createHash('sha256').update(url).digest('hex')}`
 const savedState = async (host: Awaited<ReturnType<typeof createTestHost>>, url = URL) =>
-  (await host.nxt.storage.get(stateKey(url), { scope: 'channel' })) as {
+  (await host.nxt.storage.get(stateKey(url), { scope: 'shared' })) as {
     seenIds: string[]
     failures: number
     lastCheckedAt: number
@@ -61,7 +62,7 @@ afterEach(() => {
 })
 
 describe('RSS 订阅', () => {
-  it('subscribes with channel storage, a 30-minute cron and no historical latest content', async () => {
+  it('subscribes with per-channel shared storage, a 30-minute cron and no historical latest content', async () => {
     const { host } = await fixture()
     expect([...host.tools.keys()]).toEqual(['subscribe_feed', 'list_feeds', 'unsubscribe_feed', 'check_feed_now'])
     const { value, text } = await host.call('subscribe_feed', { url: URL, label: '自定名称' })
@@ -73,7 +74,7 @@ describe('RSS 订阅', () => {
     expect(state.seenIds).toHaveLength(1)
     expect(state.seenIds[0]).toMatch(/^[a-f0-9]{64}$/u)
     expect(state.latest).toBeUndefined()
-    expect([...host.storage.keys()].every((key) => key.startsWith('channel:'))).toBe(true)
+    expect([...host.storage.keys()].every((key) => key.startsWith('shared::rss/agt_TEST/chn_TEST/'))).toBe(true)
     expect((await host.call('list_feeds')).value).toMatchObject({
       ok: true,
       feeds: [{ index: 1, label: '自定名称', failures: 0 }],
@@ -317,7 +318,7 @@ describe('RSS 订阅', () => {
     const { host, setItems } = await fixture()
     const job = await subscribe(host)
     await subscribe(host, 'https://other.example.com/feed.xml')
-    await host.nxt.storage.delete(stateKey(URL), { scope: 'channel' })
+    await host.nxt.storage.delete(stateKey(URL), { scope: 'shared' })
     expect((await host.call('list_feeds')).value).toMatchObject({ ok: true, feeds: [{ failures: 0 }, {}] })
     expect((await host.call('list_feeds')).text).toContain('最近检查：尚未检查')
     setItems([article('new'), article('old')])
@@ -499,6 +500,21 @@ describe('RSS 订阅', () => {
     resolveLate?.(respond('<rss/>'))
     await new Promise((resolve) => setTimeout(resolve, 20))
     expect(await savedState(host)).toEqual(afterTimeout)
+  })
+
+  it('shows the channel panel only the subscriptions of the agent and channel the host names', async () => {
+    const { host } = await fixture()
+    await subscribe(host)
+    const panel = (agentId: string, channelId: string) =>
+      ({ surface: 'panel', anchor: { kind: 'channel', id: channelId }, agentId, channelId }) as const
+    expect(await host.rpc('feeds.list', null, panel('agt_TEST', 'chn_TEST'))).toMatchObject({
+      feeds: [{ url: URL, label: '示例新闻', intervalMinutes: 30, failures: 0 }],
+    })
+    expect(await host.rpc('feeds.list', null, panel('agt_OTHER', 'chn_TEST'))).toEqual({ feeds: [] })
+    expect(await host.rpc('feeds.list', null, panel('agt_TEST', 'chn_OTHER'))).toEqual({ feeds: [] })
+    // 页面与导入验证没有频道，得到空列表而不是报错。
+    expect(await host.rpc('feeds.list')).toEqual({ feeds: [] })
+    expect(await host.rpc('feeds.list', null, { surface: 'verification' })).toEqual({ feeds: [] })
   })
 
   it('runs every manifest verification input without side effects', async () => {

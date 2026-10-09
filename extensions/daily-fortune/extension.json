@@ -3,22 +3,12 @@
   "slug": "daily-fortune",
   "displayName": "今日运势",
   "description": "为最近一位发言的成员生成每日固定的轻松运势卡片，包含幸运数字、宜忌和连续签到天数。仅供群聊娱乐。",
-  "scope": "agent",
   "createdAt": 1791378000000,
-  "requires": {
-    "sdk": 6
-  },
+  "requires": { "sdk": 7 },
   "permissions": {
     "permissions": [],
     "networkOrigins": [],
-    "capabilities": {
-      "storage": {
-        "scopes": ["member"]
-      },
-      "assets": {
-        "write": true
-      }
-    }
+    "agent": { "storage": { "scopes": ["member"] }, "assets": { "write": true } }
   },
   "contributions": [
     {

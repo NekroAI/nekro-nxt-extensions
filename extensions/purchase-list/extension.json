@@ -1,0 +1,46 @@
+{
+  "id": "ext_01M4FESR04CMEEDWQZZ5T3CR18",
+  "slug": "purchase-list",
+  "displayName": "团队采购清单",
+  "description": "大家在群里对智能体说要买什么，智能体记进同一份采购清单；负责采购的人在「采购清单」页面查看、勾选已买和清理。多个智能体共用这一份清单。",
+  "createdAt": 1791520202756,
+  "requires": { "sdk": 7 },
+  "permissions": {
+    "permissions": [],
+    "networkOrigins": [],
+    "host": { "storage": {} },
+    "agent": { "storage": { "scopes": ["shared"] } }
+  },
+  "contributions": [
+    {
+      "kind": "tool",
+      "name": "add_purchase_item",
+      "description": "把一件要买的东西加入团队采购清单，记录数量、备注和提出的人"
+    },
+    {
+      "kind": "tool",
+      "name": "list_purchase_items",
+      "description": "列出团队采购清单，默认只列还没买的",
+      "verificationInput": {}
+    },
+    {
+      "kind": "tool",
+      "name": "mark_purchased",
+      "description": "按 list_purchase_items 的序号把一项标记为已买"
+    },
+    { "kind": "rpc", "method": "items.list" },
+    { "kind": "rpc", "method": "items.toggle" },
+    { "kind": "rpc", "method": "items.remove" },
+    { "kind": "rpc", "method": "items.clearDone" },
+    {
+      "kind": "host-page",
+      "entryId": "list",
+      "title": "采购清单",
+      "description": "团队要买的东西，智能体记录，在这里勾选已买",
+      "icon": { "kind": "host-icon", "name": "file-text" },
+      "objectPane": "hidden",
+      "startPath": "",
+      "rail": { "order": 50 }
+    }
+  ]
+}

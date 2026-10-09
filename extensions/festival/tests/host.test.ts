@@ -41,7 +41,7 @@ afterEach(() => {
 describe('节日提醒', () => {
   it('只声明固定计划，没有运行时任务或额外权限', async () => {
     const manifest = JSON.parse(readFileSync(new URL('../extension.json', import.meta.url), 'utf8'))
-    expect(manifest.permissions.capabilities).toEqual({
+    expect(manifest.permissions.agent).toEqual({
       jobs: {
         declared: [{ id: 'festival-morning', label: '节日早晨提醒', cron: '0 8 * * *', timezone: 'Asia/Shanghai' }],
       },

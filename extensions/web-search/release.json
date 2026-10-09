@@ -1,6 +1,7 @@
 {
-  "revisionNumber": 2,
-  "revisionId": "xrv_01M4BVQ7YJBTTEDAWER0026P8T",
-  "payloadDigest": "682a0358c3101fa53f5243a32f57eecafb35c0b9a72e7eb933123154b84e4f12",
-  "createdAt": 1791399534546
+  "revisionNumber": 3,
+  "revisionId": "xrv_01M4FEYTZFVK5J2TVZP7N0ZTZ1",
+  "payloadDigest": "6d5366a5207d61b2acf4b869662776fd4c7ab407385dc0f9f6d99a0199c0acac",
+  "createdAt": 1791520369647,
+  "notes": "迁移到 NekroNXT 扩展格式 V7，需要支持 V7 的 NekroNXT。搜索服务地址与 API Key 移到本机配置，所有智能体共用；默认返回条数仍按智能体设置。升级后请在本机配置中重新填写 API Key。"
 }

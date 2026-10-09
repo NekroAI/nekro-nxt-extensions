@@ -1,11 +1,13 @@
-import { defineHostExtension, type NxtFetchResponse, type NxtHostService } from '@nekro-nxt/extension-sdk'
+import { defineHostExtension, type NxtFetchResponse, type NxtHostLayerService } from '@nekro-nxt/extension-sdk'
 
 /**
- * 网页搜索：示范凭据配置、按配置地址联网与静态提示。
+ * 网页搜索：示范本机配置共用的凭据、按配置地址联网与静态提示。
  *
  * 示范要点：
+ * - 搜索服务地址与 API Key 是本机配置（`config.host`），所有智能体共用一份；工具在智能体中注册，但联网与读凭据
+ *   都经 factory 收到的本机层 `nxt`，网络权限写在 `permissions.host`；默认返回条数是每个智能体的 `config.agent`；
  * - 只有一个「搜索服务地址」字段，按地址判断服务商，网络权限声明为 `mode: 'config'`，宿主只放行这个地址；
- * - API Key 是 `meta.role: 'secret'` 字段，用 `ctx.nxt.secrets.get` 读取，没有填写时给出可读提示而不是报错；
+ * - API Key 是 `meta.role: 'secret'` 字段，用 `nxt.secrets.get` 读取，没有填写时给出可读提示而不是报错；
  * - 结果截断到较短的摘要，控制占用的上下文；
  * - 静态提示只在版本或配置切换时变化，不破坏模型的提示词缓存。
  */
@@ -57,7 +59,7 @@ const item = (title: unknown, url: unknown, snippet: unknown, published: unknown
 }
 
 const search = async (
-  nxt: NxtHostService,
+  nxt: NxtHostLayerService,
   endpoint: URL,
   apiKey: string | undefined,
   query: string,
@@ -135,7 +137,7 @@ const render = (value: SearchResult): string => {
   return `「${value.query}」的搜索结果（${value.provider}）：\n${lines.join('\n')}`
 }
 
-export default defineHostExtension(async ({ harness }) => ({
+export default defineHostExtension(async ({ harness, nxt: host }) => ({
   inject: ['tools', 'nxt'],
   apply(ctx) {
     const nxt = ctx.nxt
@@ -163,20 +165,30 @@ export default defineHostExtension(async ({ harness }) => ({
         execute: async ({ query, count, freshness }) => {
           const keywords = typeof query === 'string' ? query.trim() : ''
           if (!keywords) return { ok: false, message: '请提供搜索关键词。' }
-          const config = record(harness.config?.() ?? {})
+          const service = record(harness.config())
           let endpoint: URL
           try {
-            endpoint = new URL(typeof config['endpoint'] === 'string' ? config['endpoint'] : 'https://api.bochaai.com')
+            endpoint = new URL(
+              typeof service['endpoint'] === 'string' ? service['endpoint'] : 'https://api.bochaai.com',
+            )
           } catch {
             return { ok: false, message: '扩展配置中的搜索服务地址无效，请填写完整的 https:// 地址。' }
           }
-          const fallback = typeof config['maxResults'] === 'number' ? config['maxResults'] : 5
+          const maxResults = record(ctx.config())['maxResults']
+          const fallback = typeof maxResults === 'number' ? maxResults : 5
           const wanted = Math.min(10, Math.max(1, Math.round(typeof count === 'number' ? count : fallback)))
           const window = ['day', 'week', 'month', 'year'].includes(freshness ?? '')
             ? (freshness as Freshness)
             : undefined
           try {
-            return await search(nxt, endpoint, await nxt.secrets.get('apiKey'), keywords.slice(0, 200), wanted, window)
+            return await search(
+              host,
+              endpoint,
+              await host.secrets.get('apiKey'),
+              keywords.slice(0, 200),
+              wanted,
+              window,
+            )
           } catch (error) {
             return {
               ok: false,

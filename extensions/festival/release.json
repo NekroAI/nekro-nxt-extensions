@@ -1,6 +1,7 @@
 {
-  "revisionNumber": 2,
-  "revisionId": "xrv_01M4BVQ7SG89T1H9C5F7XY9BJH",
-  "payloadDigest": "283d5ddecfc6056d7c36140e682ed5263cb45ac03385fa5f375ed0dc6d1a3d8f",
-  "createdAt": 1791399534385
+  "revisionNumber": 3,
+  "revisionId": "xrv_01M4FEYTTYHSFEWFPWNWE9W92K",
+  "payloadDigest": "f137bcd6941aae353d6914afe5fa7a3b50dc05259eec9ff5b2f957b806d96746",
+  "createdAt": 1791520369502,
+  "notes": "迁移到 NekroNXT 扩展格式 V7，需要支持 V7 的 NekroNXT。「包含国际节日」改为每个智能体各自设置。"
 }

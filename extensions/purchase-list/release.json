@@ -1,0 +1,7 @@
+{
+  "revisionNumber": 1,
+  "revisionId": "xrv_01M4FEYTX9W4APC3P536TPCCA7",
+  "payloadDigest": "3d009a9011c44f7a62d7044eedae2c2d23d3db506699a8f8fc73f181a9caa557",
+  "createdAt": 1791520369577,
+  "notes": "首个版本：智能体记录要买的东西，在「采购清单」页面勾选已买、清理；工具与页面在同一个扩展里，示范扩展格式 V7 的组合能力。"
+}

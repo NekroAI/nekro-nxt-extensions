@@ -3,13 +3,12 @@
   "slug": "group-admin",
   "displayName": "群管助手",
   "description": "让智能体在 OneBot 11 群聊中禁言、解除禁言、移出成员或修改群名片。管理动作风险较高，启用时需要人工确认权限。",
-  "scope": "agent",
   "createdAt": 1791378000000,
-  "requires": { "sdk": 6 },
+  "requires": { "sdk": 7 },
   "permissions": {
     "permissions": [],
     "networkOrigins": [],
-    "capabilities": {
+    "agent": {
       "platform": {
         "actions": [
           { "adapter": "onebot-11", "action": "mute_member" },

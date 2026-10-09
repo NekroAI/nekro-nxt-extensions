@@ -1,6 +1,7 @@
 {
-  "revisionNumber": 2,
-  "revisionId": "xrv_01M4BVQ7WJY1WVX9B9EHYZZJNB",
-  "payloadDigest": "a0b885d9810d9d6d0ff31b243a40450b001c9288ef932b30f5ff61948a77c0c6",
-  "createdAt": 1791399534482
+  "revisionNumber": 3,
+  "revisionId": "xrv_01M4FEYTXXGPWMVK3NW9B5B4XX",
+  "payloadDigest": "a3b0f1b7c85592e9303f836919de66370dcd80f28f1779afbc8ab95004ba9353",
+  "createdAt": 1791520369597,
+  "notes": "迁移到 NekroNXT 扩展格式 V7，需要支持 V7 的 NekroNXT。新增频道面板，在频道侧栏查看当前智能体在这个频道的订阅与取回状态。订阅数据改为按智能体与频道保存，升级前的订阅需要重新添加。"
 }

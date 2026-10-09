@@ -133,15 +133,16 @@ const render = (value: UpcomingResult): string => {
 }
 
 export default defineHostExtension(async ({ harness }) => {
-  // 按 SDK 在 factory 阶段注册一次；宿主负责固定计划和到期去重。
-  harness.onJob?.((job) => {
+  // 按 SDK 在 factory 阶段注册一次；宿主负责固定计划和到期去重。到期处理对每个启用的智能体分别执行，
+  // 国际节日开关是智能体自己的配置，从绑定到该智能体的 nxt 读取。
+  harness.onJob?.((job, nxt) => {
     // 内置频道没有群友，不需要问候。
     if (job.declaredId !== JOB_ID || job.channel.kind === 'internal') return { wake: false }
     const today = dateAt(job.firedAt)
     // 宿主离线多日后，错过的触发会合并为一次补跑，scheduledAt 是最早错过的那次。
     // 补跑发生在今天 08:00 之后，说明今天的提醒也被合并进来了，按今天处理；早于 08:00 则等今天的正常触发。
     if (dateAt(job.scheduledAt) !== today && hourAt(job.firedAt) < 8) return { wake: false }
-    const festivals = onDate(today, includesInternational(harness.config?.() ?? {}))
+    const festivals = onDate(today, includesInternational(nxt.config()))
     if (festivals.length === 0) return { wake: false }
     return {
       note: `今天（上海日期 ${today}）是${festivals.map((item) => item.name).join('、')}。\n${festivals.map((item) => `${item.name}：${item.customs}`).join('\n')}\n请智能体结合聊天氛围自行决定是否问候、如何问候，不必强制发言。`,
@@ -164,7 +165,7 @@ export default defineHostExtension(async ({ harness }) => {
               return { ok: false, message: '查询天数需要是 1 到 90 的整数，不填写时默认 30 天。' }
             }
             const from = dateAt(Date.now())
-            const international = includesInternational(harness.config?.() ?? {})
+            const international = includesInternational(ctx.config())
             const festivals = Array.from({ length: wanted }, (_entry, index) =>
               onDate(addDays(from, index), international),
             ).flat()

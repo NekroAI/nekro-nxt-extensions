@@ -34,7 +34,6 @@ const DefinitionSchema = z
     slug: z.string().regex(/^[a-z0-9][a-z0-9-]{2,63}$/u),
     displayName: z.string().trim().min(1).max(80),
     description: z.string().max(500),
-    scope: z.enum(['agent', 'host-adapter', 'host-ui']),
     createdAt: z.number().int().positive(),
     requires: z.object({ sdk: z.number().int().positive() }).strict().optional(),
     permissions: z.unknown().optional(),
@@ -131,8 +130,7 @@ export const buildExtension = (directory: string, options: { readonly bump: bool
   const previous = lockText === undefined ? undefined : LockSchema.parse(JSON.parse(lockText))
 
   const manifestFields = (revisionId: string) => ({
-    schemaVersion: 6,
-    scope: definition.scope,
+    schemaVersion: 7,
     extensionId: definition.id,
     revisionId,
     entrypoints: {
@@ -198,11 +196,10 @@ export const buildExtension = (directory: string, options: { readonly bump: bool
     files[`revision/${resourcePath}`] = resourcePath === icon?.path ? icon.bytes : strToU8(content)
   }
   const transfer = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     kind: 'nekro-nxt-extension',
     extension: {
       id: definition.id,
-      scope: definition.scope,
       slug: definition.slug,
       displayName: definition.displayName,
       description: definition.description,

@@ -1,6 +1,7 @@
 {
-  "revisionNumber": 2,
-  "revisionId": "xrv_01M4BVQ7RDZNDSBER3DAC33R6M",
-  "payloadDigest": "464e6a11a3d1ebc90859f52e170fc415cbed811997a1fa3c278246751576d921",
-  "createdAt": 1791399534350
+  "revisionNumber": 3,
+  "revisionId": "xrv_01M4FEYTT67S4EQF76J2PMAZ8V",
+  "payloadDigest": "39a0540e02a87c266ad426849ebc723dfd2011b9bdf1e2da86be318a371622a1",
+  "createdAt": 1791520369478,
+  "notes": "迁移到 NekroNXT 扩展格式 V7，需要支持 V7 的 NekroNXT。"
 }

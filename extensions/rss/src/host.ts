@@ -1,9 +1,16 @@
-import { defineHostExtension, type NxtHostService } from '@nekro-nxt/extension-sdk'
+import {
+  defineHostExtension,
+  type ExtensionJsonValue,
+  type ExtensionRpcCaller,
+  type NxtHostService,
+} from '@nekro-nxt/extension-sdk'
 
 /**
- * RSS 订阅：示范频道作用域存储、运行时周期任务与 factory 阶段的 onJob。
+ * RSS 订阅：示范智能体工具与频道面板共用数据、运行时周期任务与 factory 阶段的 onJob。
  *
  * 示范要点：
+ * - 数据放在扩展的共享存储，键以「智能体/频道」开头：工具（智能体层，`scope: 'shared'`）写入，频道面板的
+ *   界面数据接口（本机层 `nxt.storage`）按宿主核对过的 caller 读取同一份数据；
  * - 订阅列表与每个源的去重状态分开保存，避免单值接近 256 KiB 上限；
  * - 周期任务到期时先由 onJob 检查，没有新内容返回 `{ wake: false }`，不唤醒智能体；
  * - 运行时任务可能被管理员或智能体删除，读取列表时核对并重建缺失的任务；
@@ -15,8 +22,7 @@ const MAX_ITEMS = 5
 const BATCH = 4
 const WARN_AFTER = 3
 const FETCH_TIMEOUT_MS = 8000
-const LIST_KEY = 'rss.feeds'
-const CHANNEL = { scope: 'channel' } as const
+const SHARED = { scope: 'shared' } as const
 const CRONS: Readonly<Record<number, string>> = {
   15: '*/15 * * * *',
   30: '*/30 * * * *',
@@ -89,21 +95,48 @@ const digest = async (value: string): Promise<string> => {
   const bytes = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value))
   return [...new Uint8Array(bytes)].map((byte) => byte.toString(16).padStart(2, '0')).join('')
 }
-const stateKey = async (url: string): Promise<string> => `rss.state.${await digest(url)}`
 
-const readFeeds = async (nxt: NxtHostService): Promise<readonly Subscription[]> => {
-  const saved = await nxt.storage.get(LIST_KEY, CHANNEL)
+/** 一个智能体在一个频道的订阅数据；工具与面板各自从自己那一层的存储构造。 */
+interface ChannelStore {
+  get(key: string): Promise<ExtensionJsonValue | undefined>
+  set(key: string, value: ExtensionJsonValue): Promise<void>
+  delete(key: string): Promise<boolean>
+}
+const prefix = (agentId: string, channelId: string): string => `rss/${agentId}/${channelId}`
+/** 智能体层：工具与到期处理，`nxt` 已绑定到当前智能体与频道。 */
+const agentStore = async (nxt: NxtHostService): Promise<ChannelStore> => {
+  const { agent, channel } = await nxt.context.current()
+  const base = prefix(agent.id, channel.id)
+  return {
+    get: (key) => nxt.storage.get(`${base}/${key}`, SHARED),
+    set: (key, value) => nxt.storage.set(`${base}/${key}`, value, SHARED),
+    delete: (key) => nxt.storage.delete(`${base}/${key}`, SHARED),
+  }
+}
+const LIST_KEY = 'feeds'
+const stateKey = async (url: string): Promise<string> => `state/${await digest(url)}`
+
+const readFeeds = async (store: ChannelStore): Promise<readonly Subscription[]> => {
+  const saved = await store.get(LIST_KEY)
   return Array.isArray(saved) ? (saved as readonly Subscription[]) : []
 }
 /** 状态读不到时按「尚无基线」处理，而不是让整个列表失败。 */
-const readState = async (nxt: NxtHostService, url: string): Promise<FeedState> => {
-  const saved = await nxt.storage.get(await stateKey(url), CHANNEL)
+const readState = async (store: ChannelStore, url: string): Promise<FeedState> => {
+  const saved = await store.get(await stateKey(url))
   return saved && typeof saved === 'object' && !Array.isArray(saved)
     ? (saved as FeedState)
     : { failures: 0, lastCheckedAt: 0 }
 }
-const writeState = async (nxt: NxtHostService, url: string, state: FeedState): Promise<void> =>
-  nxt.storage.set(await stateKey(url), state, CHANNEL)
+const writeState = async (store: ChannelStore, url: string, state: FeedState): Promise<void> =>
+  store.set(await stateKey(url), state)
+
+const feedViews = (store: ChannelStore, feeds: readonly Subscription[]): Promise<FeedView[]> =>
+  Promise.all(
+    feeds.map(async (feed, index): Promise<FeedView> => {
+      const { failures, lastCheckedAt, latest } = await readState(store, feed.url)
+      return { ...feed, index: index + 1, failures, lastCheckedAt, ...(latest ? { latest } : {}) }
+    }),
+  )
 
 const scheduleJob = (nxt: NxtHostService, url: string, label: string, intervalMinutes: number) =>
   nxt.jobs.schedule({
@@ -114,7 +147,7 @@ const scheduleJob = (nxt: NxtHostService, url: string, label: string, intervalMi
   })
 
 /** 重建被外部删除的周期任务，返回更新后的列表与恢复了任务的地址。 */
-const restoreJobs = async (nxt: NxtHostService, saved: readonly Subscription[]) => {
+const restoreJobs = async (nxt: NxtHostService, store: ChannelStore, saved: readonly Subscription[]) => {
   const restored = new Set<string>()
   if (saved.length === 0) return { feeds: saved, restored }
   const alive = new Set((await nxt.jobs.list()).map((job) => job.jobId))
@@ -128,7 +161,7 @@ const restoreJobs = async (nxt: NxtHostService, saved: readonly Subscription[]) 
     feeds.push({ ...feed, jobId: job.jobId })
     restored.add(feed.url)
   }
-  if (restored.size > 0) await nxt.storage.set(LIST_KEY, feeds, CHANNEL)
+  if (restored.size > 0) await store.set(LIST_KEY, feeds)
   return { feeds, restored }
 }
 
@@ -180,8 +213,13 @@ const failedCheck = (feed: Subscription, error: unknown, warn = false): FeedChec
 })
 
 /** 检查一个源并保存状态。只有周期任务（`periodic`）在连续失败达到 3 次时提醒一次。 */
-const checkOne = async (nxt: NxtHostService, feed: Subscription, periodic: boolean): Promise<FeedCheck> => {
-  const state = await readState(nxt, feed.url)
+const checkOne = async (
+  nxt: NxtHostService,
+  store: ChannelStore,
+  feed: Subscription,
+  periodic: boolean,
+): Promise<FeedCheck> => {
+  const state = await readState(store, feed.url)
   const lastCheckedAt = Date.now()
   let fetched: Awaited<ReturnType<typeof fetchFeed>>
   try {
@@ -189,7 +227,7 @@ const checkOne = async (nxt: NxtHostService, feed: Subscription, periodic: boole
   } catch (error) {
     const failures = state.failures + 1
     const warn = periodic && failures >= WARN_AFTER && !state.warned
-    await writeState(nxt, feed.url, { ...state, lastCheckedAt, failures, warned: Boolean(state.warned) || warn })
+    await writeState(store, feed.url, { ...state, lastCheckedAt, failures, warned: Boolean(state.warned) || warn })
     return failedCheck(feed, error, warn)
   }
   const ids = [...fetched.entries.keys()]
@@ -197,7 +235,7 @@ const checkOne = async (nxt: NxtHostService, feed: Subscription, periodic: boole
   const seen = new Set(state.seenIds ?? ids)
   const fresh = [...fetched.entries].filter(([id]) => !seen.has(id)).map(([, item]) => item)
   const latest = fresh[0] ?? state.latest
-  await writeState(nxt, feed.url, {
+  await writeState(store, feed.url, {
     // 当前源里的 id 优先保留，再补旧 id，防止暂时消失的条目再次推送。
     seenIds: [...new Set([...ids, ...(state.seenIds ?? [])])].slice(0, MAX_SEEN),
     failures: 0,
@@ -244,7 +282,24 @@ const renderFeeds = (value: ListResult): string => {
   return lines.join('\n\n').slice(0, 6000)
 }
 
-export default defineHostExtension(async ({ harness }) => {
+/** 频道面板只读当前智能体在这个频道的订阅；宿主已核对锚点，其他来源（含导入验证）得到空列表。 */
+const panelFeeds = async (
+  storage: { get(key: string): Promise<ExtensionJsonValue | undefined> },
+  caller: ExtensionRpcCaller,
+): Promise<readonly FeedView[]> => {
+  if (caller.surface !== 'panel' || caller.agentId === undefined || caller.channelId === undefined) return []
+  const base = prefix(caller.agentId, caller.channelId)
+  const store: ChannelStore = {
+    get: (key) => storage.get(`${base}/${key}`),
+    set: () => Promise.reject(new Error('频道面板只读。')),
+    delete: () => Promise.reject(new Error('频道面板只读。')),
+  }
+  return feedViews(store, await readFeeds(store))
+}
+
+export default defineHostExtension(async ({ harness, nxt: host }) => {
+  harness.handle('feeds.list', async (_input, caller) => ({ feeds: await panelFeeds(host.storage, caller) }))
+
   // 同一频道的读改写串行执行，避免并发订阅超过上限、并发检查重复返回同一条目。
   const pending = new Map<string, Promise<unknown>>()
   const run = async <T>(channelId: string, action: () => Promise<T>): Promise<T> => {
@@ -269,11 +324,12 @@ export default defineHostExtension(async ({ harness }) => {
     if (pending.has(job.channel.id)) return { wake: false }
     try {
       return await run(job.channel.id, async () => {
-        const feed = (await readFeeds(nxt)).find(
+        const store = await agentStore(nxt)
+        const feed = (await readFeeds(store)).find(
           (entry) => entry.jobId === job.jobId && entry.url === record(job.payload)['url'],
         )
         if (!feed) return { wake: false }
-        const checked = await checkOne(nxt, feed, true)
+        const checked = await checkOne(nxt, store, feed, true)
         if (checked.warn) {
           return {
             note: `「${feed.label}」已连续 ${WARN_AFTER} 次取回失败，请提醒用户检查订阅源地址或服务状态。\n${feed.url}\n${checked.message}`,
@@ -314,7 +370,8 @@ export default defineHostExtension(async ({ harness }) => {
             if (label !== undefined && (typeof label !== 'string' || label.trim().length > 80))
               return { ok: false, message: '订阅名称需要是最多 80 字的文字。' }
             return guarded(nxt, async (): Promise<SubscribeResult> => {
-              const { feeds, restored } = await restoreJobs(nxt, await readFeeds(nxt))
+              const store = await agentStore(nxt)
+              const { feeds, restored } = await restoreJobs(nxt, store, await readFeeds(store))
               const existing = feeds.find((entry) => entry.url === url)
               if (existing) {
                 const message = restored.has(url)
@@ -324,7 +381,7 @@ export default defineHostExtension(async ({ harness }) => {
               }
               if (feeds.length >= MAX_FEEDS)
                 return { ok: false, message: '每个频道最多订阅 20 个源，请先取消不需要的订阅。' }
-              const interval = record(harness.config?.() ?? {})['intervalMinutes'] ?? 30
+              const interval = record(ctx.config())['intervalMinutes'] ?? 30
               if (typeof interval !== 'number' || !CRONS[interval])
                 return { ok: false, message: '检查间隔只能设置为 15、30、60 或 180 分钟。' }
               const fetched = await fetchFeed(nxt, url)
@@ -332,14 +389,14 @@ export default defineHostExtension(async ({ harness }) => {
               const job = await scheduleJob(nxt, url, name, interval)
               const feed: Subscription = { url, label: name, jobId: job.jobId, intervalMinutes: interval }
               try {
-                await nxt.storage.set(LIST_KEY, [...feeds, feed], CHANNEL)
+                await store.set(LIST_KEY, [...feeds, feed])
               } catch (error) {
                 // 存储与任务没有事务，列表保存失败时撤销刚创建的任务。
                 await nxt.jobs.cancel(job.jobId).catch(() => undefined)
                 throw error
               }
               // 基线写入失败也不影响订阅：下次检查会重新建立基线。
-              await writeState(nxt, url, {
+              await writeState(store, url, {
                 seenIds: [...fetched.entries.keys()].slice(0, MAX_SEEN),
                 failures: 0,
                 lastCheckedAt: Date.now(),
@@ -360,14 +417,9 @@ export default defineHostExtension(async ({ harness }) => {
           output: { schema: { type: 'json' }, render: (_args, value) => text(renderFeeds(value)) },
           execute: () =>
             guarded(nxt, async (): Promise<ListResult> => {
-              const { feeds } = await restoreJobs(nxt, await readFeeds(nxt))
-              const views = await Promise.all(
-                feeds.map(async (feed, index): Promise<FeedView> => {
-                  const { failures, lastCheckedAt, latest } = await readState(nxt, feed.url)
-                  return { ...feed, index: index + 1, failures, lastCheckedAt, ...(latest ? { latest } : {}) }
-                }),
-              )
-              return { ok: true, feeds: views }
+              const store = await agentStore(nxt)
+              const { feeds } = await restoreJobs(nxt, store, await readFeeds(store))
+              return { ok: true, feeds: await feedViews(store, feeds) }
             }),
         }),
       )
@@ -391,13 +443,14 @@ export default defineHostExtension(async ({ harness }) => {
             if (index !== undefined && (!Number.isInteger(index) || index < 1 || index > MAX_FEEDS))
               return { ok: false, message: '序号需要是 1 到 20 的整数。' }
             return guarded(nxt, async (): Promise<UnsubscribeResult> => {
-              const feeds = await readFeeds(nxt)
+              const store = await agentStore(nxt)
+              const feeds = await readFeeds(store)
               const feed = url ? feeds.find((entry) => entry.url === url) : feeds[(index ?? 0) - 1]
               if (!feed) return { ok: false, message: '当前频道没有找到这个订阅，请先用 list_feeds 查看。' }
               await nxt.jobs.cancel(feed.jobId)
               const rest = feeds.filter((entry) => entry.url !== feed.url)
-              await nxt.storage.set(LIST_KEY, rest, CHANNEL)
-              await nxt.storage.delete(await stateKey(feed.url), CHANNEL)
+              await store.set(LIST_KEY, rest)
+              await store.delete(await stateKey(feed.url))
               return { ok: true, message: `已取消「${feed.label}」及对应的周期任务。` }
             })
           },
@@ -416,7 +469,8 @@ export default defineHostExtension(async ({ harness }) => {
             const url = raw === undefined ? undefined : normalizeUrl(raw)
             if (raw !== undefined && !url) return URL_ERROR
             return guarded(nxt, async (): Promise<CheckResult> => {
-              const { feeds: all } = await restoreJobs(nxt, await readFeeds(nxt))
+              const store = await agentStore(nxt)
+              const { feeds: all } = await restoreJobs(nxt, store, await readFeeds(store))
               const feeds = all.filter((entry) => url === undefined || entry.url === url)
               if (url && feeds.length === 0)
                 return { ok: false, message: '当前频道没有订阅这个地址，请先订阅或用 list_feeds 查看。' }
@@ -425,7 +479,7 @@ export default defineHostExtension(async ({ harness }) => {
               for (let start = 0; start < feeds.length; start += BATCH) {
                 const batch = feeds
                   .slice(start, start + BATCH)
-                  .map((feed) => checkOne(nxt, feed, false).catch((error) => failedCheck(feed, error)))
+                  .map((feed) => checkOne(nxt, store, feed, false).catch((error) => failedCheck(feed, error)))
                 checks.push(...(await Promise.all(batch)))
               }
               return checks.every((check) => check.ok)

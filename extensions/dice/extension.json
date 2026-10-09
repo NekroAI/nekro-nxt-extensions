@@ -3,9 +3,8 @@
   "slug": "dice",
   "displayName": "掷骰与抽签",
   "description": "按骰子表达式掷骰（如 3d6+2、d20），进行百分骰检定，或从若干选项中随机抽取。结果由宿主随机数决定，智能体负责播报。",
-  "scope": "agent",
   "createdAt": 1791378000000,
-  "requires": { "sdk": 6 },
+  "requires": { "sdk": 7 },
   "permissions": { "permissions": [], "networkOrigins": [] },
   "contributions": [
     {

@@ -23,7 +23,7 @@ describe('语音合成', () => {
   })
 
   it('requires a secret and ignores credentials in ordinary configuration', async () => {
-    for (const options of [{}, { secrets: { apiKey: ' ' } }, { config: { apiKey: 'not-a-secret' } }]) {
+    for (const options of [{}, { secrets: { apiKey: ' ' } }, { hostConfig: { apiKey: 'not-a-secret' } }]) {
       const host = await createTestHost(factory, options)
       expect((await host.call('speak', { text: '示例朗读' })).text).toContain('还没有配置')
       expect(host.calls).toEqual([])
@@ -55,7 +55,8 @@ describe('语音合成', () => {
   it('preserves base paths and respects configured voice and overrides', async () => {
     const host = await createTestHost(factory, {
       secrets,
-      config: { endpoint: 'https://speech.example.com/proxy/v1///', model: 'fixture-tts', voice: 'fixture-voice' },
+      hostConfig: { endpoint: 'https://speech.example.com/proxy/v1///', model: 'fixture-tts' },
+      config: { voice: 'fixture-voice' },
       fetch: success,
     })
     await host.call('speak', { text: '示例' })
@@ -97,13 +98,18 @@ describe('语音合成', () => {
     'https://example.com/v1?token=fixture',
     'https://example.com/v1#fragment',
   ])('rejects invalid service address %s', async (endpoint) => {
-    const host = await createTestHost(factory, { secrets, config: { endpoint } })
+    const host = await createTestHost(factory, { secrets, hostConfig: { endpoint } })
     expect((await host.call('speak', { text: '示例' })).text).toContain('服务地址无效')
     expect(host.calls).toEqual([])
   })
 
   it('falls back to default model and voice when they are blank', async () => {
-    const host = await createTestHost(factory, { secrets, config: { model: ' ', voice: '' }, fetch: success })
+    const host = await createTestHost(factory, {
+      secrets,
+      hostConfig: { model: ' ' },
+      config: { voice: '' },
+      fetch: success,
+    })
     await host.call('speak', { text: '示例' })
     expect(JSON.parse((host.calls[0]?.input as { body: string }).body)).toMatchObject({
       model: 'tts-1',

@@ -1,0 +1,5 @@
+{
+  "summary": "群里说要买什么，智能体记进同一份采购清单；负责采购的人在页面上勾选已买、清理。工具与管理页面在同一个扩展里。",
+  "tags": ["采购", "清单", "团队", "协作", "页面"],
+  "sourceUrl": "https://github.com/NekroAI/nekro-nxt-extensions/tree/main/extensions/purchase-list"
+}
