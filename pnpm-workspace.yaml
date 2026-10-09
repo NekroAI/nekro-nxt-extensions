@@ -3,9 +3,3 @@ allowBuilds:
 # 官方包刚发布时也直接使用。
 minimumReleaseAgeExclude:
   - '@nekro-nxt/*'
-
-# 临时：V7 共享包发布到 npm 前使用本地构建（发布后改回版本号并删除）。
-overrides:
-  '@nekro-nxt/contracts': 'file:/private/tmp/claude-501/-Users-miose-Projects-nekro-nxt/c91b7983-d77b-48b5-9308-be5c9ecfaa4a/scratchpad/tarballs/nekro-nxt-contracts-0.3.0.tgz'
-  '@nekro-nxt/extension-format': 'file:/private/tmp/claude-501/-Users-miose-Projects-nekro-nxt/c91b7983-d77b-48b5-9308-be5c9ecfaa4a/scratchpad/tarballs/nekro-nxt-extension-format-0.3.0.tgz'
-  '@nekro-nxt/extension-sdk': 'file:/private/tmp/claude-501/-Users-miose-Projects-nekro-nxt/c91b7983-d77b-48b5-9308-be5c9ecfaa4a/scratchpad/tarballs/nekro-nxt-extension-sdk-0.2.0.tgz'
