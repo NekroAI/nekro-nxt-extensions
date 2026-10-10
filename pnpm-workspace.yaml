@@ -3,3 +3,8 @@ allowBuilds:
 # 官方包刚发布时也直接使用。
 minimumReleaseAgeExclude:
   - '@nekro-nxt/*'
+# 暂时指向本地构建的 SDK 等级 8 共享包（扩展资源库、检索索引、工具结果附图、本机层模型调用），npm 发布后改回版本号。
+overrides:
+  '@nekro-nxt/contracts': file:../.tarballs/nekro-nxt-contracts-0.3.0.tgz
+  '@nekro-nxt/extension-format': file:../.tarballs/nekro-nxt-extension-format-0.3.0.tgz
+  '@nekro-nxt/extension-sdk': file:../.tarballs/nekro-nxt-extension-sdk-0.2.0.tgz

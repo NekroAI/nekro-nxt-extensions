@@ -4,19 +4,24 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+overrides:
+  '@nekro-nxt/contracts': file:../.tarballs/nekro-nxt-contracts-0.3.0.tgz
+  '@nekro-nxt/extension-format': file:../.tarballs/nekro-nxt-extension-format-0.3.0.tgz
+  '@nekro-nxt/extension-sdk': file:../.tarballs/nekro-nxt-extension-sdk-0.2.0.tgz
+
 importers:
 
   .:
     devDependencies:
       '@nekro-nxt/contracts':
-        specifier: 0.3.0
-        version: 0.3.0
+        specifier: file:../.tarballs/nekro-nxt-contracts-0.3.0.tgz
+        version: file:../.tarballs/nekro-nxt-contracts-0.3.0.tgz
       '@nekro-nxt/extension-format':
-        specifier: 0.3.0
-        version: 0.3.0
+        specifier: file:../.tarballs/nekro-nxt-extension-format-0.3.0.tgz
+        version: file:../.tarballs/nekro-nxt-extension-format-0.3.0.tgz
       '@nekro-nxt/extension-sdk':
-        specifier: 0.2.0
-        version: 0.2.0(@types/react@18.3.31)
+        specifier: file:../.tarballs/nekro-nxt-extension-sdk-0.2.0.tgz
+        version: file:../.tarballs/nekro-nxt-extension-sdk-0.2.0.tgz(@types/react@18.3.31)
       '@types/node':
         specifier: ^22.20.5
         version: 22.20.5
@@ -203,14 +208,17 @@ packages:
   '@jridgewell/sourcemap-codec@1.6.0':
     resolution: {integrity: sha512-T7jf+5zgsZHwNJ4lvQ7/aezbyk0nNX+zJVWpmHA7VYsEx7a7qr5Rg5IbtJFqkgze5Y2sruq1RUY8Q837Od7iFw==}
 
-  '@nekro-nxt/contracts@0.3.0':
-    resolution: {integrity: sha512-8aaamd24+jXyTIrGa/4x1ngIO0ISNpgDTIEd19/9orpjh5oGfcJklR4pV3vp9ChMVjIHyu+biSwFq6k1T+5Qtw==}
+  '@nekro-nxt/contracts@file:../.tarballs/nekro-nxt-contracts-0.3.0.tgz':
+    resolution: {integrity: sha512-DwqJw0b7H7kerNq0Xq91HwvppTcNKdz3pAK+h2R2uzJIhOilBGjYsUjc3/TCT0G7ngULBKp03omq3nVG0wdL4Q==, tarball: file:../.tarballs/nekro-nxt-contracts-0.3.0.tgz}
+    version: 0.3.0
 
-  '@nekro-nxt/extension-format@0.3.0':
-    resolution: {integrity: sha512-Jk1Bnzoe1UUlStnZgXAhjR7X2r4xM+1ZUmu/aX7y7cs/CJVfq7Xhw4UxFvDoVJOQO3Y8IHzv/i1QoeG8/NEMBg==}
+  '@nekro-nxt/extension-format@file:../.tarballs/nekro-nxt-extension-format-0.3.0.tgz':
+    resolution: {integrity: sha512-hq3B+jxGDhtxQKl8yMBCLY7odYceBDGXUxbx8Bp/S7F4XTfmjI22Q5I5sGaC3VPxzMxw/bYfI9Qc7r11zRpBPg==, tarball: file:../.tarballs/nekro-nxt-extension-format-0.3.0.tgz}
+    version: 0.3.0
 
-  '@nekro-nxt/extension-sdk@0.2.0':
-    resolution: {integrity: sha512-rK2DQoLpFH+WBtPnVdUTCxwzJVDMVFRH/FSYx5juI3lUZVRRnqJ1j9CEz8yCEZcAkNUpBlhTBP97C0/IPEt6/w==}
+  '@nekro-nxt/extension-sdk@file:../.tarballs/nekro-nxt-extension-sdk-0.2.0.tgz':
+    resolution: {integrity: sha512-DMnfuvbwwc9KqWr5UuzrZsyNrfg+MtmZhgUfapN4sfF7YUjqTNeJzxr+mRbZqDnqGw2BZNeR15aKZU0BygFv8w==, tarball: file:../.tarballs/nekro-nxt-extension-sdk-0.2.0.tgz}
+    version: 0.2.0
     peerDependencies:
       '@types/react': '>=18'
     peerDependenciesMeta:
@@ -752,21 +760,21 @@ snapshots:
 
   '@jridgewell/sourcemap-codec@1.6.0': {}
 
-  '@nekro-nxt/contracts@0.3.0':
+  '@nekro-nxt/contracts@file:../.tarballs/nekro-nxt-contracts-0.3.0.tgz':
     dependencies:
       zod: 4.4.3
 
-  '@nekro-nxt/extension-format@0.3.0':
+  '@nekro-nxt/extension-format@file:../.tarballs/nekro-nxt-extension-format-0.3.0.tgz':
     dependencies:
-      '@nekro-nxt/contracts': 0.3.0
+      '@nekro-nxt/contracts': file:../.tarballs/nekro-nxt-contracts-0.3.0.tgz
       '@noble/hashes': 2.3.0
       fflate: 0.8.3
       postcss: 8.5.26
       zod: 4.4.3
 
-  '@nekro-nxt/extension-sdk@0.2.0(@types/react@18.3.31)':
+  '@nekro-nxt/extension-sdk@file:../.tarballs/nekro-nxt-extension-sdk-0.2.0.tgz(@types/react@18.3.31)':
     dependencies:
-      '@nekro-nxt/contracts': 0.3.0
+      '@nekro-nxt/contracts': file:../.tarballs/nekro-nxt-contracts-0.3.0.tgz
       zod: 4.4.3
     optionalDependencies:
       '@types/react': 18.3.31

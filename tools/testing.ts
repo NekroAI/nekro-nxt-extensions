@@ -17,6 +17,13 @@ import type {
   NxtCallContext,
   NxtFeed,
   NxtFetchInit,
+  NxtImageInfo,
+  NxtIndexCondition,
+  NxtIndexDocument,
+  NxtIndexService,
+  NxtLibraryAsset,
+  NxtModelOption,
+  NxtModelRequest,
   NxtFetchResponse,
   NxtHostLayerService,
   NxtHostService,
@@ -53,6 +60,18 @@ export interface TestHostOptions {
   readonly parseFeed?: (xml: string) => NxtFeed
   readonly platformActions?: readonly NxtPlatformAction[]
   readonly now?: () => number
+  /** 本机层 `models.list()` 返回的模型。 */
+  readonly models?: readonly NxtModelOption[]
+  /** 本机层 `models.complete()` 的回复。 */
+  readonly modelReply?: (request: NxtModelRequest) => string | Promise<string>
+  /** 扩展索引声明的文本字段权重，按索引名给出；未给出的字段权重为 1。 */
+  readonly indexWeights?: Readonly<Record<string, Readonly<Record<string, number>>>>
+}
+
+/** 测试中的一张图片：在哪些频道可见、宿主返回的图片信息。 */
+export interface TestPicture {
+  readonly channels: readonly string[]
+  readonly info?: Partial<NxtImageInfo>
 }
 
 export interface RecordedCall {
@@ -103,10 +122,68 @@ export const createTestHost = async (
   const prompts = { static: new Map<string, string>(), dynamic: new Map<string, () => string | Promise<string>>() }
   const jobs = new Map<string, NxtJobRecord & { payload?: ExtensionJsonValue }>()
   const calls: RecordedCall[] = []
-  const context: NxtCallContext = { ...DEFAULT_CONTEXT, ...options.context }
+  let context: NxtCallContext = { ...DEFAULT_CONTEXT, ...options.context }
+  const pictures = new Map<string, { channels: Set<string>; info: NxtImageInfo }>()
+  const library = new Map<string, NxtLibraryAsset>()
+  const indexed = new Map<string, { fields: Readonly<Record<string, string>>; filters: NxtIndexCondition[] }>()
+  const modelCalls: NxtModelRequest[] = []
 
   const unsupported = (what: string) => () =>
     Promise.reject(new Error(`测试宿主没有提供 ${what}，请在 createTestHost 中传入。`))
+
+  const pictureInfo = (assetId: string): NxtImageInfo => {
+    const picture = pictures.get(assetId)
+    if (!picture) throw new Error(`找不到资源 ${assetId}。`)
+    return picture.info
+  }
+  const visibleHere = (assetId: string) => pictures.get(assetId)?.channels.has(context.channel.id) === true
+  const libraryRecord = (assetId: string): NxtLibraryAsset => {
+    const info = pictureInfo(assetId)
+    return { assetId, mediaType: info.mediaType, byteSize: info.byteSize, addedAt: now() }
+  }
+
+  // 关键词检索的内存近似：按字符二元组与字段权重计分，过滤与真实宿主相同（组间都满足，组内满足其一）。
+  const bigrams = (text: string): Set<string> => {
+    const clean = text.toLowerCase().replaceAll(/\s+/gu, '')
+    const grams = new Set<string>()
+    for (let index = 0; index < clean.length; index++) grams.add(clean.slice(index, index + 2))
+    return grams
+  }
+  const index: NxtIndexService = {
+    upsert: async (collection, id, document: NxtIndexDocument) => {
+      const filters = Object.entries(document.filters ?? {}).flatMap(([field, value]) =>
+        (typeof value === 'string' ? [value] : value).map((entry) => ({ field, value: entry })),
+      )
+      indexed.set(`${collection}\u0000${id}`, { fields: document.fields, filters })
+    },
+    delete: async (collection, id) => indexed.delete(`${collection}\u0000${id}`),
+    count: async (collection) => [...indexed.keys()].filter((key) => key.startsWith(`${collection}\u0000`)).length,
+    query: async (collection, text, queryOptions) => {
+      const terms = bigrams(text)
+      const weights = options.indexWeights?.[collection] ?? {}
+      const hits = [...indexed.entries()]
+        .filter(([key]) => key.startsWith(`${collection}\u0000`))
+        .filter(([, document]) =>
+          (queryOptions?.filter ?? []).every((group) =>
+            group.some((condition) =>
+              document.filters.some((entry) => entry.field === condition.field && entry.value === condition.value),
+            ),
+          ),
+        )
+        .map(([key, document]) => ({
+          id: key.slice(collection.length + 1),
+          score: Object.entries(document.fields).reduce(
+            (sum, [field, value]) =>
+              sum + (weights[field] ?? 1) * [...bigrams(value)].filter((gram) => terms.has(gram)).length,
+            0,
+          ),
+        }))
+        .filter(({ score }) => score > 0)
+        .sort((left, right) => right.score - left.score)
+        .slice(0, queryOptions?.limit ?? 10)
+      return { hits, mode: 'keyword' as const }
+    },
+  }
 
   const nxt: NxtHostService = {
     config: () => config,
@@ -130,7 +207,28 @@ export const createTestHost = async (
         return record
       },
       fromUrl: unsupported('assets.fromUrl'),
+      keep: async (assetId) => {
+        if (!visibleHere(assetId)) throw new Error(`资源 ${assetId} 不在当前频道里，不能收进资源库。`)
+        const record = library.get(assetId) ?? libraryRecord(assetId)
+        library.set(assetId, record)
+        return record
+      },
+      release: async (assetId) => library.delete(assetId),
+      attach: async (assetId) => {
+        const record = library.get(assetId)
+        if (!record) throw new Error(`资源 ${assetId} 不在这个扩展的资源库里。`)
+        pictures.get(assetId)?.channels.add(context.channel.id)
+        return { assetId, byteSize: record.byteSize, mediaType: record.mediaType }
+      },
     },
+    image: {
+      info: async (assetId) => {
+        if (!visibleHere(assetId) && !library.has(assetId))
+          throw new Error(`资源 ${assetId} 不在当前频道或扩展资源库里。`)
+        return pictureInfo(assetId)
+      },
+    },
+    index,
     storage: {
       get: async (key, scope) => storage.get(storageKey(key, scope))?.value,
       set: async (key, value, scope) => {
@@ -224,6 +322,27 @@ export const createTestHost = async (
     },
     render: nxt.render,
     parse: nxt.parse,
+    assets: {
+      list: async () => ({ assets: [...library.values()].sort((left, right) => right.addedAt - left.addedAt) }),
+      get: async (assetId) => library.get(assetId),
+      release: async (assetId) => library.delete(assetId),
+    },
+    image: {
+      info: async (assetId) => {
+        if (!library.has(assetId)) throw new Error(`资源 ${assetId} 不在扩展资源库里。`)
+        return pictureInfo(assetId)
+      },
+    },
+    index,
+    models: {
+      list: async () => options.models ?? [],
+      complete: async (request) => {
+        if (!options.modelReply) throw new Error('测试宿主没有提供 modelReply。')
+        if (!(options.models ?? []).some(({ ref }) => ref === request.model)) throw new Error('找不到这个模型。')
+        modelCalls.push(request)
+        return { text: await options.modelReply(request) }
+      },
+    },
   }
 
   const environment: ExtensionHostEnvironment = {
@@ -275,6 +394,33 @@ export const createTestHost = async (
     hostNxt,
     tools,
     calls,
+    library,
+    indexed,
+    modelCalls,
+    /** 让一张图出现在某些频道里（像成员发来的那样）；未给出的图片信息用合理默认值。 */
+    addPicture(assetId: string, picture: TestPicture) {
+      pictures.set(assetId, {
+        channels: new Set(picture.channels),
+        info: {
+          mediaType: 'image/png',
+          width: 240,
+          height: 240,
+          frames: 1,
+          byteSize: 20_000,
+          dhash: '0f0f0f0f0f0f0f0f',
+          ...picture.info,
+        },
+      })
+    },
+    /** 把一张图直接放进资源库（像页面导入的那样）。 */
+    addToLibrary(assetId: string, picture: Omit<TestPicture, 'channels'> = {}) {
+      if (!pictures.has(assetId)) this.addPicture(assetId, { channels: [], ...picture })
+      library.set(assetId, libraryRecord(assetId))
+    },
+    /** 切换测试智能体所在的频道。 */
+    useChannel(channel: Partial<NxtCallContext['channel']> & { readonly id: string }) {
+      context = { ...context, channel: { ...context.channel, kind: 'group', ...channel } }
+    },
     assets,
     jobs,
     prompts,
@@ -284,11 +430,9 @@ export const createTestHost = async (
       const tool = tools.get(name)
       if (!tool) throw new Error(`没有注册工具 ${name}`)
       const value = await tool.execute(args)
-      const text = tool.output
-        .render(args, value)
-        .map((block) => block.text)
-        .join('\n')
-      return { value, text }
+      const blocks = tool.output.render(args, value)
+      const text = blocks.map((block) => (block.type === 'text' ? block.text : `[图片 ${block.assetId}]`)).join('\n')
+      return { value, text, blocks }
     },
     /** 像页面或面板一样调用界面数据接口；默认来自页面。 */
     async rpc(method: string, input: ExtensionJsonValue = null, caller: ExtensionRpcCaller = { surface: 'page' }) {

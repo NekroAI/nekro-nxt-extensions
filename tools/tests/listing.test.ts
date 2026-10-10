@@ -40,6 +40,7 @@ describe('条目信息', () => {
       'message-guard',
       'purchase-list',
       'rss',
+      'stickers',
       'tts',
       'web-reader',
       'web-search',
