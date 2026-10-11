@@ -40,6 +40,7 @@ interface Overview {
 
 interface ImportStatus {
   readonly state: 'running' | 'done' | 'cancelled'
+  readonly model?: string
   readonly total: number
   readonly done: number
   readonly skipped: number
@@ -404,7 +405,7 @@ export default defineClientExtension(({ React, host }) => ({
                 'p',
                 null,
                 status.state === 'running'
-                  ? `正在${model === NO_MODEL ? '整理' : '补写用途与配文'}：${status.done + status.failed} / ${status.total}`
+                  ? `正在${status.model ? '补写用途与配文' : '整理'}：${status.done + status.failed} / ${status.total}`
                   : status.state === 'cancelled'
                     ? '已取消。已经处理的图片留在库里。'
                     : `完成：处理了 ${status.done} 张${status.skipped > 0 ? `，${status.skipped} 张已在库里` : ''}${status.failed > 0 ? `，${status.failed} 张没有补写成功（图片已收下，可以之后再补写）` : ''}。`,
@@ -496,6 +497,8 @@ export default defineClientExtension(({ React, host }) => ({
                   { key: 'cancel', variant: 'ghost', onClick: () => void host.call('import.cancel') },
                   '取消导入',
                 ),
+                // 导入在本机实例里进行，关掉窗口或浏览器都不影响。
+                h(Button, { key: 'background', variant: 'primary', onClick: onClose }, '在后台继续'),
               ]
             : status !== undefined
               ? [h(Button, { key: 'close', onClick: onClose }, '完成')]
@@ -529,6 +532,27 @@ export default defineClientExtension(({ React, host }) => ({
       const [error, setError] = React.useState<string | undefined>(undefined)
       const [revision, setRevision] = React.useState(0)
       const refresh = React.useCallback(() => setRevision((value) => value + 1), [])
+      const [job, setJob] = React.useState<ImportStatus | undefined>(undefined)
+
+      // 导入在后台进行时，页面上显示进度，并随着进度刷新列表。
+      React.useEffect(() => {
+        if (importing !== undefined) return undefined
+        let last = -1
+        const check = () =>
+          void host
+            .call('import.status')
+            .then((value) => {
+              const next = value === null ? undefined : (record(value) as unknown as ImportStatus)
+              setJob(next?.state === 'running' ? next : undefined)
+              const progress = next === undefined ? -1 : next.done + next.failed + (next.state === 'running' ? 0 : 1)
+              if (last >= 0 && progress !== last) refresh()
+              last = progress
+            })
+            .catch(() => undefined)
+        check()
+        const timer = setInterval(check, 3000)
+        return () => clearInterval(timer)
+      }, [importing])
 
       React.useEffect(() => {
         void host
@@ -561,14 +585,20 @@ export default defineClientExtension(({ React, host }) => ({
         title: '表情包',
         meta: '智能体在群里收藏的表情包。通用的图在群之间流通，群里特有的只在原来的群用；智能体发图前会先确认内容。',
         actions: [
-          overview !== undefined && overview.unlabeled > 0
+          job === undefined && overview !== undefined && overview.unlabeled > 0
             ? h(
                 Button,
                 { key: 'relabel', variant: 'ghost', onClick: () => setImporting('relabel') },
                 `补写 ${overview.unlabeled} 张的用途`,
               )
             : null,
-          h(Button, { key: 'import', variant: 'primary', onClick: () => setImporting('upload') }, '导入'),
+          job === undefined
+            ? h(Button, { key: 'import', variant: 'primary', onClick: () => setImporting('upload') }, '导入')
+            : h(
+                Button,
+                { key: 'import', variant: 'ghost', onClick: () => setImporting('upload') },
+                `正在导入 ${job.done + job.failed} / ${job.total}`,
+              ),
         ],
       })
 

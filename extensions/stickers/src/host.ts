@@ -30,6 +30,7 @@ const PICTURE_TYPES = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/we
 const RECENT_LIMIT = 20
 const MAX_TAGS = 8
 const IMPORT_CONCURRENCY = 3
+const IMPORT_ATTEMPTS = 3
 
 type Scope = 'public' | 'local'
 
@@ -59,6 +60,8 @@ interface Sticker {
   readonly sentCount: number
   readonly lastSentAt?: number
   readonly deletedAt?: number
+  /** 导入时选了模型却没判断成：补写时按模型的判断定流通状态。 */
+  readonly unjudged?: true
 }
 
 interface ChannelSettings {
@@ -129,11 +132,30 @@ const IMPORT_PROMPT = [
   '"tags":["2 到 5 个短标签"]}',
 ].join('')
 
+/** 回答里最后一个能解析的 JSON 对象；有的模型会先写一段思考或说明。 */
+const lastJsonObject = (reply: string): Record<string, unknown> | undefined => {
+  const text = reply.replaceAll(/<think>[\s\S]*?<\/think>/gu, '')
+  for (let end = text.lastIndexOf('}'); end >= 0; end = text.lastIndexOf('}', end - 1)) {
+    for (let start = text.lastIndexOf('{', end); start >= 0; start = text.lastIndexOf('{', start - 1)) {
+      try {
+        const parsed: unknown = JSON.parse(text.slice(start, end + 1))
+        if (parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)) {
+          return parsed as Record<string, unknown>
+        }
+      } catch {
+        // 不是完整的对象，再往前找。
+      }
+    }
+  }
+  return undefined
+}
+
 const parseLabel = (reply: string) => {
-  const start = reply.indexOf('{')
-  const end = reply.lastIndexOf('}')
-  if (start < 0 || end <= start) throw new Error('模型没有按格式回答')
-  const parsed = record(JSON.parse(reply.slice(start, end + 1)))
+  const parsed = lastJsonObject(reply)
+  if (parsed === undefined) {
+    const excerpt = reply.replaceAll(/\s+/gu, ' ').trim().slice(0, 40)
+    throw new Error(excerpt ? `模型没有按格式回答：「${excerpt}」` : '模型没有回答')
+  }
   return {
     meaning: clip(parsed['meaning'], 200),
     caption: clip(parsed['caption'], 200),
@@ -269,28 +291,34 @@ export default defineHostExtension(async ({ harness, nxt: host }) => {
       caption: '',
       description: nameDescription(item.name),
       tags: [],
-      shareable: true,
+      // 不选模型是管理员自己决定直接导入；选了模型却没判断成的，先留在本群。
+      shareable: !model,
     }
     let label = fallback
     let labelError: unknown
     if (model) {
-      try {
-        const reply = await host.models.complete({
-          model,
-          messages: [
-            {
-              role: 'user',
-              content: [
-                { type: 'text', text: IMPORT_PROMPT },
-                { type: 'image', assetId: item.assetId },
-              ],
-            },
-          ],
-          maxOutputTokens: 1024,
-        })
-        label = parseLabel(reply.text)
-      } catch (error) {
-        labelError = error
+      // 偶尔答偏或网络出错，重试两次；仍然失败就照样收下，用途留空，之后可以补写。
+      for (let attempt = 0; attempt < IMPORT_ATTEMPTS; attempt += 1) {
+        try {
+          const reply = await host.models.complete({
+            model,
+            messages: [
+              {
+                role: 'user',
+                content: [
+                  { type: 'text', text: IMPORT_PROMPT },
+                  { type: 'image', assetId: item.assetId },
+                ],
+              },
+            ],
+            maxOutputTokens: 1024,
+          })
+          label = parseLabel(reply.text)
+          labelError = undefined
+          break
+        } catch (error) {
+          labelError = error
+        }
       }
     }
     const outcome = await serial(async () => {
@@ -298,10 +326,17 @@ export default defineHostExtension(async ({ harness, nxt: host }) => {
       const existing = sameSticker(all, item.assetId)
       const now = Date.now()
       if (existing !== undefined && existing.deletedAt === undefined) {
-        // 已在库里：只给还没写用途的补写文字，流通状态保持不变。
+        // 已在库里：只给还没写用途的补写文字；判断为不宜流通的改成本群，导入时没判断成的才可能放开。
         if (existing.meaning || !label.meaning) return 'skipped' as const
+        const { unjudged, ...rest } = existing
         await put({
-          ...existing,
+          ...rest,
+          // 收紧随时可以；放开只给导入时没判断成的。
+          ...(model && !label.shareable
+            ? { scope: 'local' as const }
+            : unjudged && model
+              ? { scope: 'public' as const }
+              : {}),
           meaning: label.meaning,
           caption: existing.caption || label.caption,
           description: existing.description || label.description,
@@ -330,6 +365,7 @@ export default defineHostExtension(async ({ harness, nxt: host }) => {
         addedAt: now,
         updatedAt: now,
         sentCount: 0,
+        ...(labelError === undefined ? {} : { unjudged: true as const }),
       })
       return 'added' as const
     })
@@ -440,9 +476,12 @@ export default defineHostExtension(async ({ harness, nxt: host }) => {
       const options = record(input)
       const sticker = (await stickers()).get(clip(options['id'], 128))
       if (!sticker) return fail('这张表情包已经不在库里了。')
-      const scope = options['scope'] === 'public' || options['scope'] === 'local' ? options['scope'] : sticker.scope
+      const decided = options['scope'] === 'public' || options['scope'] === 'local'
+      const scope = decided ? (options['scope'] as Scope) : sticker.scope
+      // 管理员定了流通状态，之后补写不再改它。
+      const { unjudged: _unjudged, ...rest } = sticker
       const updated = await put({
-        ...sticker,
+        ...(decided ? rest : sticker),
         ...('meaning' in options ? { meaning: clip(options['meaning'], 200) } : {}),
         ...('caption' in options ? { caption: clip(options['caption'], 200) } : {}),
         ...('description' in options ? { description: clip(options['description'], 200) } : {}),
@@ -879,8 +918,9 @@ export default defineHostExtension(async ({ harness, nxt: host }) => {
                 const sticker = (await stickers()).get(clip(args.id, 128))
                 if (sticker === undefined || sticker.deletedAt !== undefined) return fail('没有这张表情包。')
                 const meaning = clip(args.meaning, 200)
+                const { unjudged: _unjudged, ...judged } = sticker
                 await put({
-                  ...sticker,
+                  ...(args.scope === 'local' ? judged : sticker),
                   ...(meaning ? { meaning } : {}),
                   ...(args.caption !== undefined ? { caption: clip(args.caption, 200) } : {}),
                   ...(args.description !== undefined ? { description: clip(args.description, 200) } : {}),

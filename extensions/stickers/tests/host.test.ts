@@ -249,11 +249,20 @@ describe('批量导入', () => {
       ast_SHOT:
         '{"meaning":"聊天截图","caption":"","description":"群聊截图","tags":["截图"],"sticker":false,"shareable":false}',
     }
+    let flaky = 0
     const host = await setup({
       models: [vision, text],
       modelReply: (request) => {
         const image = request.messages[0]!.content.find((part) => part.type === 'image')
-        return replies[image?.type === 'image' ? image.assetId : ''] ?? 'not json'
+        const assetId = image?.type === 'image' ? image.assetId : ''
+        // 第一次先写一段说明、没有 JSON，重试时才按格式回答。
+        if (assetId === 'ast_FLAKY') {
+          flaky += 1
+          return flaky === 1
+            ? '我看到一只猫。'
+            : '<think>先看图 {草稿}</think>{"sticker":true,"shareable":true,"meaning":"表达疑惑","caption":"","description":"猫歪头","tags":["疑惑"]}'
+        }
+        return replies[assetId] ?? 'not json'
       },
     })
     expect(await host.rpc('import.models')).toEqual([
@@ -262,6 +271,7 @@ describe('批量导入', () => {
     host.addToLibrary('ast_OK', { info: { dhash: '0000000000000000' } })
     host.addToLibrary('ast_SHOT', { info: { dhash: 'ffffffffffffffff' } })
     host.addToLibrary('ast_BAD', { info: { dhash: '00000000ffffffff' } })
+    host.addToLibrary('ast_FLAKY', { info: { dhash: '0f0f0f0f0f0f0f0f' } })
     expect(
       await host.rpc('import.start', {
         model: 'fixture:vision',
@@ -269,16 +279,18 @@ describe('批量导入', () => {
           { assetId: 'ast_OK', name: 'a.png' },
           { assetId: 'ast_SHOT', name: 'b.png' },
           { assetId: 'ast_BAD', name: '猫猫震惊.png' },
+          { assetId: 'ast_FLAKY', name: 'c.png' },
         ],
       }),
-    ).toMatchObject({ ok: true, job: { total: 3, state: 'running' } })
+    ).toMatchObject({ ok: true, job: { total: 4, state: 'running' } })
     await vi.waitFor(async () => expect(await host.rpc('import.status')).toMatchObject({ state: 'done' }))
     expect(await host.rpc('import.status')).toMatchObject({
-      total: 3,
-      done: 2,
+      total: 4,
+      done: 3,
       failed: 1,
-      errors: [expect.stringContaining('猫猫震惊.png')],
+      errors: [expect.stringContaining('猫猫震惊.png：模型没有按格式回答：「not json」')],
     })
+    expect(flaky).toBe(2)
 
     const all = (await host.rpc('library.list', { view: 'all' })) as {
       items: { id: string; meaning: string; caption: string; scope: string; origin: string; description: string }[]
@@ -291,7 +303,9 @@ describe('批量导入', () => {
       origin: 'import',
     })
     expect(byId['ast_SHOT']).toMatchObject({ scope: 'local' })
-    expect(byId['ast_BAD']).toMatchObject({ meaning: '', description: '猫猫震惊' })
+    // 选了模型却没判断成的不能直接流通。
+    expect(byId['ast_BAD']).toMatchObject({ meaning: '', description: '猫猫震惊', scope: 'local' })
+    expect(byId['ast_FLAKY']).toMatchObject({ meaning: '表达疑惑', scope: 'public' })
 
     // 再次导入：已有用途的跳过，没写用途的补写。
     replies['ast_BAD'] =
@@ -306,8 +320,27 @@ describe('批量导入', () => {
       }),
     ).toMatchObject({ job: { total: 1, skipped: 1 } })
     await vi.waitFor(async () => expect(await host.rpc('import.status')).toMatchObject({ state: 'done' }))
+    // 补写时模型判断能流通，才放开。
     host.useChannel(ROOM_A)
     expect((await host.call('sticker_search', { query: '震惊' })).value).toMatchObject({ items: [{ id: 'ast_BAD' }] })
+  })
+
+  it('补写时模型判断不宜流通的图改成只在本群', async () => {
+    const host = await setup({
+      models: [vision],
+      modelReply: () =>
+        '{"sticker":false,"shareable":false,"meaning":"聊天截图","caption":"","description":"截图","tags":["截图"]}',
+    })
+    host.addToLibrary('ast_PLAIN', { info: { dhash: '1111111111111111' } })
+    await host.rpc('import.start', { items: [{ assetId: 'ast_PLAIN', name: 'x.png' }] })
+    await vi.waitFor(async () => expect(await host.rpc('import.status')).toMatchObject({ state: 'done' }))
+    const before = (await host.rpc('library.list', { view: 'all' })) as { items: { id: string; scope: string }[] }
+    expect(before.items).toMatchObject([{ id: 'ast_PLAIN', scope: 'public' }])
+
+    await host.rpc('import.start', { model: 'fixture:vision', items: [{ assetId: 'ast_PLAIN', name: 'x.png' }] })
+    await vi.waitFor(async () => expect(await host.rpc('import.status')).toMatchObject({ state: 'done' }))
+    const after = (await host.rpc('library.list', { view: 'all' })) as { items: { id: string; scope: string }[] }
+    expect(after.items).toMatchObject([{ id: 'ast_PLAIN', scope: 'local' }])
   })
 
   it('不选模型时用有意义的文件名作描述，导入可以取消', async () => {
