@@ -66,6 +66,8 @@ export interface TestHostOptions {
   readonly modelReply?: (request: NxtModelRequest) => string | Promise<string>
   /** 扩展索引声明的文本字段权重，按索引名给出；未给出的字段权重为 1。 */
   readonly indexWeights?: Readonly<Record<string, Readonly<Record<string, number>>>>
+  /** 返回一段文字时 `index.query()` 以它为错误抛出，用来测试检索不可用时的退路。 */
+  readonly indexQueryError?: () => string | undefined
 }
 
 /** 测试中的一张图片：在哪些频道可见、宿主返回的图片信息。 */
@@ -159,6 +161,8 @@ export const createTestHost = async (
     delete: async (collection, id) => indexed.delete(`${collection}\u0000${id}`),
     count: async (collection) => [...indexed.keys()].filter((key) => key.startsWith(`${collection}\u0000`)).length,
     query: async (collection, text, queryOptions) => {
+      const failure = options.indexQueryError?.()
+      if (failure !== undefined) throw new Error(failure)
       const terms = bigrams(text)
       const weights = options.indexWeights?.[collection] ?? {}
       const hits = [...indexed.entries()]

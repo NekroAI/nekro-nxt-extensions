@@ -360,6 +360,16 @@ describe('批量导入', () => {
     expect(after.items).toMatchObject([{ id: 'ast_PLAIN', scope: 'local' }])
   })
 
+  it('检索不可用时页面按文字列出匹配的表情包', async () => {
+    let failing = false
+    const host = await setup({ indexQueryError: () => (failing ? '检索暂时不可用' : undefined) })
+    host.addToLibrary('ast_HAPPY', { info: { dhash: '0000000000000000' } })
+    await host.rpc('import.start', { items: [{ assetId: 'ast_HAPPY', name: '开心_转圈.gif' }] })
+    await vi.waitFor(async () => expect(await host.rpc('import.status')).toMatchObject({ state: 'done' }))
+    failing = true
+    expect(await host.rpc('library.list', { query: '开心' })).toMatchObject({ total: 1, items: [{ id: 'ast_HAPPY' }] })
+  })
+
   it('不选模型时用有意义的文件名作描述，导入可以取消', async () => {
     const host = await setup()
     host.addToLibrary('ast_NAMED', { info: { dhash: '0000000000000000' } })

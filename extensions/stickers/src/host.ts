@@ -461,20 +461,29 @@ export default defineHostExtension(async ({ harness, nxt: host }) => {
       items = items
         .filter((sticker) => sticker.sentTo.some((channel) => !sticker.sources.includes(channel)))
         .sort((left, right) => (right.lastSentAt ?? 0) - (left.lastSentAt ?? 0))
-    } else if (query && view !== 'trash') {
-      const ranked = (await host.index.query(COLLECTION, query, { limit: 50 })).hits.map(({ id }) => id)
-      items = ranked.flatMap((id) => items.filter((sticker) => sticker.id === id))
     } else {
-      if (query) {
-        items = items.filter((sticker) =>
-          [sticker.meaning, sticker.caption, sticker.description, ...sticker.tags].some((value) =>
-            value.includes(query),
-          ),
+      // 检索不可用时退回逐条匹配文字，页面照常列出结果。
+      const ranked =
+        query && view !== 'trash'
+          ? await host.index
+              .query(COLLECTION, query, { limit: 50 })
+              .then((result) => result.hits.map(({ id }) => id))
+              .catch(() => undefined)
+          : undefined
+      if (ranked !== undefined) {
+        items = ranked.flatMap((id) => items.filter((sticker) => sticker.id === id))
+      } else {
+        if (query) {
+          items = items.filter((sticker) =>
+            [sticker.meaning, sticker.caption, sticker.description, ...sticker.tags].some((value) =>
+              value.includes(query),
+            ),
+          )
+        }
+        items.sort((left, right) =>
+          view === 'trash' ? (right.deletedAt ?? 0) - (left.deletedAt ?? 0) : right.addedAt - left.addedAt,
         )
       }
-      items.sort((left, right) =>
-        view === 'trash' ? (right.deletedAt ?? 0) - (left.deletedAt ?? 0) : right.addedAt - left.addedAt,
-      )
     }
     return {
       total: items.length,
