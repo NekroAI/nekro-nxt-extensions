@@ -47,7 +47,7 @@ describe('收藏与跨群使用', () => {
 
     const used = await host.call('sticker_use', { id: 'ast_CRY' })
     expect(used.value).toEqual({ ok: true, assetId: 'ast_CRY' })
-    expect(used.text).toContain('send_channel_message')
+    expect(used.text).toContain('{"type":"image","assetId":"ast_CRY"}')
   })
 
   it('看不到的图不能收藏，不是图片或太大的图也不收', async () => {
@@ -74,19 +74,25 @@ describe('收藏与跨群使用', () => {
     expect((await host.call('sticker_use', { id: 'ast_CHAT' })).text).toContain('不能在这个群用')
   })
 
-  it('重新压缩过的同一张图合并到原记录，认为不能流通时收紧', async () => {
+  it('同一张图在另一个群再收藏时合并，认为不能流通就收紧；外观相近的不同图分开保存', async () => {
     const host = await setup()
-    host.addPicture('ast_ONE', { channels: [ROOM_A.id], info: { dhash: '00ff00ff00ff00ff' } })
-    host.addPicture('ast_TWO', { channels: [ROOM_B.id], info: { dhash: '00ff00ff00ff00fe' } })
+    host.addPicture('ast_ONE', { channels: [ROOM_A.id, ROOM_B.id], info: { dhash: '00ff00ff00ff00ff' } })
+    host.addPicture('ast_SAME_TEMPLATE', { channels: [ROOM_B.id], info: { dhash: '00ff00ff00ff00fe' } })
     host.useChannel(ROOM_A)
     await save(host, 'ast_ONE')
     host.useChannel(ROOM_B)
-    const merged = await save(host, 'ast_TWO', { tags: ['委屈', '猫猫'], shareable: false })
+    const merged = await save(host, 'ast_ONE', { tags: ['委屈', '猫猫'], shareable: false })
     expect(merged.value).toMatchObject({ ok: true, id: 'ast_ONE', merged: true, scope: 'local' })
-    expect(host.library.has('ast_TWO')).toBe(false)
-    const list = await host.rpc('library.list', { view: 'all' })
-    expect(list).toMatchObject({ total: 1, items: [{ id: 'ast_ONE', sources: [ROOM_A.id, ROOM_B.id] }] })
-    expect((list as { items: { tags: string[] }[] }).items[0]!.tags).toEqual(['委屈', '哭', '猫猫'])
+    expect((await save(host, 'ast_SAME_TEMPLATE', { meaning: '表达生气' })).value).toMatchObject({ merged: false })
+    const list = (await host.rpc('library.list', { view: 'all' })) as {
+      total: number
+      items: { id: string; sources: string[]; tags: string[] }[]
+    }
+    expect(list.total).toBe(2)
+    expect(list.items.find((item) => item.id === 'ast_ONE')).toMatchObject({
+      sources: [ROOM_A.id, ROOM_B.id],
+      tags: ['委屈', '哭', '猫猫'],
+    })
   })
 
   it('同一个群最近发过的往后排', async () => {

@@ -27,8 +27,6 @@ const TRASH_DAYS = 30
 const DAY = 24 * 60 * 60 * 1000
 const MAX_BYTES = 8 * 1024 * 1024
 const PICTURE_TYPES = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp'])
-/** 差值哈希相差不超过这么多位，就当作同一张图被重新压缩过。 */
-const NEAR_DUPLICATE_BITS = 4
 const RECENT_LIMIT = 20
 const MAX_TAGS = 8
 const IMPORT_CONCURRENCY = 3
@@ -96,17 +94,6 @@ const words = (value: unknown): string[] => {
 }
 const text = (value: string): ExtensionToolResultBlock[] => [{ type: 'text', text: value }]
 
-const hashDistance = (left: string, right: string): number => {
-  if (!/^[0-9a-f]{16}$/u.test(left) || !/^[0-9a-f]{16}$/u.test(right)) return 64
-  let value = BigInt(`0x${left}`) ^ BigInt(`0x${right}`)
-  let bits = 0
-  while (value > 0n) {
-    bits += Number(value & 1n)
-    value >>= 1n
-  }
-  return bits
-}
-
 const channelSettings = (value: unknown): ChannelSettings => {
   const saved = record(value)
   return {
@@ -134,12 +121,12 @@ const isAvailable = (
 }
 
 const IMPORT_PROMPT = [
-  '这是一张准备收进表情包库的图片。只输出一个 JSON 对象，不要输出别的内容：',
-  '{"meaning":"这张图在聊天里表达什么、适合在什么情况下发，一到两句，写用途不写外观",',
-  '"caption":"图里文字的原文，没有就是空字符串","description":"一句话描述画面",',
-  '"tags":["2 到 5 个短标签"],',
-  '"sticker":表情包或反应图为 true，截图、照片、聊天记录、长图为 false,',
-  '"shareable":图里有聊天记录、群名、昵称、账号、真实照片或个人信息时为 false，否则为 true}',
+  '这是一张准备收进表情包库的图片。只输出一个 JSON 对象，不要输出别的内容，字段按下面的顺序：',
+  '{"sticker":表情包或反应图为 true，截图、照片、聊天记录、长图为 false,',
+  '"shareable":图里有聊天记录、群名、昵称、账号、真实照片或个人信息时为 false，否则为 true,',
+  '"meaning":"这张图在聊天里表达什么、适合在什么情况下发，一到两句，写用途不写外观",',
+  '"caption":"图里文字的原文，最多 50 字，没有就是空字符串","description":"一句话描述画面",',
+  '"tags":["2 到 5 个短标签"]}',
 ].join('')
 
 const parseLabel = (reply: string) => {
@@ -152,7 +139,8 @@ const parseLabel = (reply: string) => {
     caption: clip(parsed['caption'], 200),
     description: clip(parsed['description'], 200),
     tags: words(parsed['tags']),
-    shareable: parsed['sticker'] !== false && parsed['shareable'] !== false,
+    // 没有明确判断为可流通的，一律先留在库里；管理员可以在页面上改。
+    shareable: parsed['sticker'] === true && parsed['shareable'] === true,
   }
 }
 
@@ -244,8 +232,8 @@ export default defineHostExtension(async ({ harness, nxt: host }) => {
     }
   }
 
-  const nearDuplicate = (all: Map<string, Sticker>, id: string, dhash: string): Sticker | undefined =>
-    all.get(id) ?? [...all.values()].find((sticker) => hashDistance(sticker.dhash, dhash) <= NEAR_DUPLICATE_BITS)
+  // 只合并内容完全相同的图（同一个资源）。外观相近的图可能是同一模板配了不同的字，合并会丢掉其中一张。
+  const sameSticker = (all: Map<string, Sticker>, id: string): Sticker | undefined => all.get(id)
 
   const readSettings = async () => ({ paused: record(await host.storage.get(SETTINGS_KEY))['paused'] === true })
   const readChannel = async (channelId: string) =>
@@ -298,7 +286,7 @@ export default defineHostExtension(async ({ harness, nxt: host }) => {
               ],
             },
           ],
-          maxOutputTokens: 600,
+          maxOutputTokens: 1024,
         })
         label = parseLabel(reply.text)
       } catch (error) {
@@ -307,7 +295,7 @@ export default defineHostExtension(async ({ harness, nxt: host }) => {
     }
     const outcome = await serial(async () => {
       const all = await stickers()
-      const existing = nearDuplicate(all, item.assetId, info.dhash)
+      const existing = sameSticker(all, item.assetId)
       const now = Date.now()
       if (existing !== undefined && existing.deletedAt === undefined) {
         // 已在库里：只给还没写用途的补写文字，流通状态保持不变。
@@ -636,7 +624,7 @@ export default defineHostExtension(async ({ harness, nxt: host }) => {
               const tags = words(args.tags)
               return serial(async () => {
                 const all = await stickers()
-                const existing = nearDuplicate(all, assetId, info.dhash)
+                const existing = sameSticker(all, assetId)
                 const now = Date.now()
                 if (existing !== undefined) {
                   const revived = existing.deletedAt !== undefined
@@ -807,7 +795,7 @@ export default defineHostExtension(async ({ harness, nxt: host }) => {
               render: (_args, value) =>
                 text(
                   value.ok
-                    ? `可以发送了：在 send_channel_message 里用 image 块，assetId 为 ${value.assetId}。`
+                    ? `可以发送了：把 {"type":"image","assetId":"${value.assetId}"} 放进 send_channel_message 的 parts。`
                     : value.message,
                 ),
             },

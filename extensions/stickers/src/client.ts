@@ -95,8 +95,44 @@ export default defineClientExtension(({ React, host }) => ({
     } = ctx.ui
     const h = React.createElement
 
-    /** 来源群的名字；没有读取频道的权限或频道已删除时显示编号。 */
-    const ChannelName = ({ id }: { readonly id: string }) => h('span', null, ctx.data.useChannel(id)?.name ?? id)
+    /** 来源群的名字；频道已经删除时如实说明。 */
+    const ChannelName = ({ id }: { readonly id: string }) =>
+      h('span', null, ctx.data.useChannel(id)?.name ?? '已删除的频道')
+
+    // 对话框渲染在页面容器之外，扩展 CSS 的作用域到不了，那里的布局用内联样式（只引用设计变量）。
+    const inline = {
+      detail: {
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+        gap: 'var(--s-5)',
+        alignItems: 'start',
+      },
+      detailImage: {
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center',
+        padding: 'var(--s-3)',
+        borderRadius: 'var(--r-2)',
+        background: 'var(--inset)',
+      },
+      detailPicture: { maxWidth: '100%', maxHeight: '240px', objectFit: 'contain' },
+      fields: { display: 'flex', flexDirection: 'column', gap: 'var(--s-3)', minWidth: 0 },
+      facts: {
+        display: 'grid',
+        gridTemplateColumns: 'auto minmax(0, 1fr)',
+        gap: 'var(--s-1) var(--s-3)',
+        margin: 0,
+        font: 'var(--t-note)',
+        color: 'var(--fg-2)',
+      },
+      factLabel: { color: 'var(--muted)', whiteSpace: 'nowrap' },
+      factValue: { margin: 0, overflowWrap: 'anywhere' },
+      progress: { height: '6px', overflow: 'hidden', borderRadius: 'var(--r-1)', background: 'var(--inset)' },
+      progressBar: { height: '100%', background: 'var(--accent-fill)', transition: 'width 200ms ease-out' },
+      chooser: { display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 'var(--s-3)' },
+      note: { margin: 0, color: 'var(--muted)', font: 'var(--t-note)' },
+      errors: { margin: 0, paddingLeft: 'var(--s-5)', color: 'var(--muted)', font: 'var(--t-note)' },
+    } as const
 
     const channelList = (ids: readonly string[]) =>
       ids.length === 0
@@ -213,15 +249,15 @@ export default defineClientExtension(({ React, host }) => ({
         },
         h(
           'div',
-          { className: cls('stk-detail') },
+          { style: inline.detail },
           h(
             'div',
-            { className: cls('stk-detail-image') },
-            h('img', { src: host.assetUrl(sticker.id), alt: sticker.meaning }),
+            { style: inline.detailImage },
+            h('img', { src: host.assetUrl(sticker.id), alt: sticker.meaning, style: inline.detailPicture }),
           ),
           h(
             'div',
-            { className: cls('stk-fields') },
+            { style: inline.fields },
             error === undefined ? null : h(InlineFeedback, { tone: 'error' }, error),
             h(
               Field,
@@ -251,21 +287,20 @@ export default defineClientExtension(({ React, host }) => ({
               }),
             ),
             h(
-              PropertyList,
-              null,
-              h(PropertyRow, { label: '出现过的群' }, channelList(sticker.sources)),
-              h(
-                PropertyRow,
-                { label: '发到过的群' },
-                channelList(sticker.sentTo.filter((id) => !sticker.sources.includes(id))),
-              ),
-              h(
-                PropertyRow,
-                { label: '来源' },
-                sticker.origin === 'import' ? '导入' : `${sticker.collectorName ?? '智能体'}收藏`,
-              ),
-              h(PropertyRow, { label: '发送次数' }, String(sticker.sentCount)),
-              h(PropertyRow, { label: '大小' }, `${megabytes(sticker.byteSize)}${sticker.frames > 1 ? ' · 动图' : ''}`),
+              'dl',
+              { style: inline.facts },
+              ...(
+                [
+                  ['出现过的群', channelList(sticker.sources)],
+                  ['发到过的其他群', channelList(sticker.sentTo.filter((id) => !sticker.sources.includes(id)))],
+                  ['来源', sticker.origin === 'import' ? '导入' : `${sticker.collectorName ?? '智能体'}收藏`],
+                  ['发送次数', String(sticker.sentCount)],
+                  ['大小', `${megabytes(sticker.byteSize)}${sticker.frames > 1 ? ' · 动图' : ''}`],
+                ] as const
+              ).flatMap(([label, value]) => [
+                h('dt', { key: `${label}-label`, style: inline.factLabel }, label),
+                h('dd', { key: `${label}-value`, style: inline.factValue }, value),
+              ]),
             ),
           ),
         ),
@@ -289,6 +324,7 @@ export default defineClientExtension(({ React, host }) => ({
       const [uploadSkipped, setUploadSkipped] = React.useState<readonly string[]>([])
       const [status, setStatus] = React.useState<ImportStatus | undefined>(undefined)
       const [error, setError] = React.useState<string | undefined>(undefined)
+      const picker = React.useRef<{ click(): void } | null>(null)
       React.useEffect(() => {
         void host.call('import.models').then((value) => {
           const list = Array.isArray(value) ? (value as unknown as readonly ModelOption[]) : []
@@ -349,15 +385,14 @@ export default defineClientExtension(({ React, host }) => ({
         h(
           'div',
           {
-            className: cls('stk-progress'),
+            style: inline.progress,
             role: 'progressbar',
             'aria-valuemin': 0,
             'aria-valuemax': total,
             'aria-valuenow': done,
           },
           h('div', {
-            className: cls('stk-progress-bar'),
-            style: { width: `${total === 0 ? 100 : (done / total) * 100}%` },
+            style: { ...inline.progressBar, width: `${total === 0 ? 100 : (done / total) * 100}%` },
           }),
         )
       const body =
@@ -378,7 +413,7 @@ export default defineClientExtension(({ React, host }) => ({
               [...uploadSkipped, ...status.errors].length > 0
                 ? h(
                     'ul',
-                    { className: cls('stk-errors') },
+                    { style: inline.errors },
                     ...[...uploadSkipped, ...status.errors].slice(0, 8).map((line) => h('li', { key: line }, line)),
                   )
                 : null,
@@ -399,15 +434,32 @@ export default defineClientExtension(({ React, host }) => ({
                   : h(
                       Field,
                       { label: '图片或压缩包', hint: '可以多选，也可以选包含图片的 zip；单张图片最大 20 MB' },
-                      h('input', {
-                        type: 'file',
-                        multiple: true,
-                        className: cls('stk-file'),
-                        accept: 'image/png,image/jpeg,image/gif,image/webp,.zip,application/zip',
-                        onChange: (event: {
-                          readonly target: { readonly files: ArrayLike<ExtensionUploadFile> | null }
-                        }) => setFiles(Array.from(event.target.files ?? [])),
-                      }),
+                      h(
+                        'div',
+                        { style: inline.chooser },
+                        h(
+                          Button,
+                          { variant: 'ghost', onClick: () => picker.current?.click() },
+                          files.length === 0 ? '选择文件' : '重新选择',
+                        ),
+                        h(
+                          'span',
+                          { style: inline.note },
+                          files.length === 0
+                            ? '还没有选择'
+                            : `已选 ${files.length} 个文件，共 ${megabytes(files.reduce((sum, file) => sum + file.size, 0))}`,
+                        ),
+                        h('input', {
+                          ref: picker,
+                          type: 'file',
+                          multiple: true,
+                          hidden: true,
+                          accept: 'image/png,image/jpeg,image/gif,image/webp,.zip,application/zip',
+                          onChange: (event: {
+                            readonly target: { readonly files: ArrayLike<ExtensionUploadFile> | null }
+                          }) => setFiles(Array.from(event.target.files ?? [])),
+                        }),
+                      ),
                     ),
                 h(
                   Field,
@@ -570,7 +622,22 @@ export default defineClientExtension(({ React, host }) => ({
           h(
             Stack,
             null,
-            h(Tabs, { label: '分类', options: VIEWS, value: view, onChange: (value: View) => setView(value) }),
+            // 窄屏上标签条放不下，换成下拉选择；两者由 CSS 按宽度显示其一。
+            h(
+              'div',
+              { className: cls('stk-tabs') },
+              h(Tabs, { label: '分类', options: VIEWS, value: view, onChange: (value: View) => setView(value) }),
+            ),
+            h(
+              'div',
+              { className: cls('stk-view-select') },
+              h(Select, {
+                'aria-label': '分类',
+                value: view,
+                options: VIEWS,
+                onValueChange: (value: string) => setView(value as View),
+              }),
+            ),
             h(
               'div',
               { className: cls('stk-toolbar') },
@@ -586,12 +653,17 @@ export default defineClientExtension(({ React, host }) => ({
               ),
               overview === undefined
                 ? null
-                : h(Switch, {
-                    label: '暂停流通',
-                    checked: overview.paused,
-                    onCheckedChange: (paused: boolean) =>
-                      void host.call('library.settings', { paused }).then(() => refresh()),
-                  }),
+                : h(
+                    'span',
+                    { className: cls('stk-pause') },
+                    h('span', { 'aria-hidden': true }, '暂停流通'),
+                    h(Switch, {
+                      label: '暂停流通',
+                      checked: overview.paused,
+                      onCheckedChange: (paused: boolean) =>
+                        void host.call('library.settings', { paused }).then(() => refresh()),
+                    }),
+                  ),
             ),
             overview?.paused === true
               ? h(InlineFeedback, { tone: 'warning' }, '已暂停流通：每个群只用在本群出现过的表情包。')
