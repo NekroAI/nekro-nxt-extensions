@@ -7,8 +7,8 @@ import {
 import styles from '../assets/client.module.css'
 
 /**
- * 「表情包」页面与频道面板：页面浏览、搜索、编辑和批量导入，面板设置单个群收藏和使用表情包的方式。
- * 图片通过 `host.assetUrl` 显示，导入时先用 `host.upload` 把图片或压缩包放进扩展资源库，再交给本机实例补写。
+ * 「表情包」页面与频道面板：页面浏览、搜索、编辑和批量导入，面板设置单个频道的收集与使用范围。
+ * 图片通过 `host.assetUrl` 显示，导入时先用 `host.upload` 把图片或压缩包放进扩展资源库，再交给本机实例标注。
  */
 type View = 'all' | 'public' | 'local' | 'flowed' | 'unlabeled' | 'trash'
 
@@ -56,10 +56,10 @@ interface ModelOption {
 
 const VIEWS: readonly { readonly value: View; readonly label: string }[] = [
   { value: 'all', label: '全部' },
-  { value: 'public', label: '流通' },
-  { value: 'local', label: '只在本群' },
-  { value: 'flowed', label: '最近流入其他群' },
-  { value: 'unlabeled', label: '没写用途' },
+  { value: 'public', label: '公共' },
+  { value: 'local', label: '仅限来源频道' },
+  { value: 'flowed', label: '跨频道发送' },
+  { value: 'unlabeled', label: '未标注' },
   { value: 'trash', label: '回收站' },
 ]
 
@@ -96,7 +96,7 @@ export default defineClientExtension(({ React, host }) => ({
     } = ctx.ui
     const h = React.createElement
 
-    /** 来源群的名字；频道已经删除时如实说明。 */
+    /** 来源频道的名字；频道已删除时如实显示。 */
     const ChannelName = ({ id }: { readonly id: string }) =>
       h('span', null, ctx.data.useChannel(id)?.name ?? '已删除的频道')
 
@@ -147,7 +147,7 @@ export default defineClientExtension(({ React, host }) => ({
           type: 'button',
           className: cls('stk-card'),
           onClick: onOpen,
-          'aria-label': sticker.meaning || '没写用途的表情包',
+          'aria-label': sticker.description || sticker.caption || '未标注的表情包',
         },
         h(
           'span',
@@ -156,14 +156,17 @@ export default defineClientExtension(({ React, host }) => ({
         ),
         h(
           'span',
-          { className: sticker.meaning ? cls('stk-meaning') : `${cls('stk-meaning')} ${cls('stk-muted')}` },
-          sticker.meaning || '还没写用途',
+          {
+            className:
+              sticker.description || sticker.caption ? cls('stk-meaning') : `${cls('stk-meaning')} ${cls('stk-muted')}`,
+          },
+          sticker.description || sticker.caption || '未标注',
         ),
         h(
           'span',
           { className: cls('stk-badges') },
           sticker.frames > 1 ? h(StatusBadge, { tone: 'info' }, '动图') : null,
-          sticker.scope === 'local' ? h(StatusBadge, { tone: 'neutral' }, '只在本群') : null,
+          sticker.scope === 'local' ? h(StatusBadge, { tone: 'neutral' }, '仅限来源频道') : null,
         ),
       )
 
@@ -234,7 +237,7 @@ export default defineClientExtension(({ React, host }) => ({
                     busy,
                     onClick: () => void run('library.remove', { id: sticker.id }),
                   },
-                  '移进回收站',
+                  '移入回收站',
                 ),
                 h(
                   Button,
@@ -254,7 +257,7 @@ export default defineClientExtension(({ React, host }) => ({
           h(
             'div',
             { style: inline.detailImage },
-            h('img', { src: host.assetUrl(sticker.id), alt: sticker.meaning, style: inline.detailPicture }),
+            h('img', { src: host.assetUrl(sticker.id), alt: sticker.description, style: inline.detailPicture }),
           ),
           h(
             'div',
@@ -262,7 +265,7 @@ export default defineClientExtension(({ React, host }) => ({
             error === undefined ? null : h(InlineFeedback, { tone: 'error' }, error),
             h(
               Field,
-              { label: '用途', hint: '表达什么、适合在什么情况下发；智能体主要按它来找' },
+              { label: '用途', hint: '表达的情绪和适用场合' },
               h(Textarea, {
                 value: draft.meaning,
                 rows: 2,
@@ -276,13 +279,13 @@ export default defineClientExtension(({ React, host }) => ({
             field('tags', '标签', '用顿号或空格分隔'),
             h(
               Field,
-              { label: '在哪些群使用' },
+              { label: '使用范围' },
               h(Select, {
                 value: draft.scope,
                 disabled: trashed,
                 options: [
-                  { value: 'public', label: '所有群（流通）' },
-                  { value: 'local', label: '只在出现过它的群' },
+                  { value: 'public', label: '公共' },
+                  { value: 'local', label: '仅限来源频道' },
                 ],
                 onValueChange: (value: string) => setDraft({ ...draft, scope: value === 'local' ? 'local' : 'public' }),
               }),
@@ -292,9 +295,9 @@ export default defineClientExtension(({ React, host }) => ({
               { style: inline.facts },
               ...(
                 [
-                  ['出现过的群', channelList(sticker.sources)],
-                  ['发到过的其他群', channelList(sticker.sentTo.filter((id) => !sticker.sources.includes(id)))],
-                  ['来源', sticker.origin === 'import' ? '导入' : `${sticker.collectorName ?? '智能体'}收藏`],
+                  ['来源频道', channelList(sticker.sources)],
+                  ['跨频道发送', channelList(sticker.sentTo.filter((id) => !sticker.sources.includes(id)))],
+                  ['添加方式', sticker.origin === 'import' ? '导入' : `${sticker.collectorName ?? '智能体'}收集`],
                   ['发送次数', String(sticker.sentCount)],
                   ['大小', `${megabytes(sticker.byteSize)}${sticker.frames > 1 ? ' · 动图' : ''}`],
                 ] as const
@@ -313,7 +316,7 @@ export default defineClientExtension(({ React, host }) => ({
       onClose,
       onChanged,
     }: {
-      /** 为已在库里、还没写用途的图补写，而不是上传新图。 */
+      /** 标注已在库里的未标注图片，而不是上传新图。 */
       readonly relabel: boolean
       readonly onClose: () => void
       readonly onChanged: () => void
@@ -405,10 +408,10 @@ export default defineClientExtension(({ React, host }) => ({
                 'p',
                 null,
                 status.state === 'running'
-                  ? `正在${status.model ? '补写用途与配文' : '整理'}：${status.done + status.failed} / ${status.total}`
+                  ? `正在${status.model ? '标注' : '导入'}：${status.done + status.failed} / ${status.total}`
                   : status.state === 'cancelled'
-                    ? '已取消。已经处理的图片留在库里。'
-                    : `完成：处理了 ${status.done} 张${status.skipped > 0 ? `，${status.skipped} 张已在库里` : ''}${status.failed > 0 ? `，${status.failed} 张没有补写成功（图片已收下，可以之后再补写）` : ''}。`,
+                    ? '已取消，已处理的图片会保留。'
+                    : `已完成：${status.done} 张${status.skipped > 0 ? `，${status.skipped} 张已存在` : ''}${status.failed > 0 ? `，${status.failed} 张标注失败，可稍后重新标注` : ''}。`,
               ),
               status.state === 'running' ? progress(status.done + status.failed, status.total) : null,
               [...uploadSkipped, ...status.errors].length > 0
@@ -423,7 +426,7 @@ export default defineClientExtension(({ React, host }) => ({
             ? h(
                 Stack,
                 null,
-                h('p', null, `正在上传 ${megabytes(upload.sent)} / ${megabytes(upload.total)}`),
+                h('p', null, `正在上传：${megabytes(upload.sent)} / ${megabytes(upload.total)}`),
                 progress(upload.sent, upload.total),
               )
             : h(
@@ -431,10 +434,10 @@ export default defineClientExtension(({ React, host }) => ({
                 null,
                 error === undefined ? null : h(InlineFeedback, { tone: 'error' }, error),
                 relabel
-                  ? h('p', null, '用所选的模型看一遍库里还没写用途的图，补上用途、图中文字和标签。')
+                  ? h('p', null, '用所选模型标注全部未标注的表情包。')
                   : h(
                       Field,
-                      { label: '图片或压缩包', hint: '可以多选，也可以选包含图片的 zip；单张图片最大 20 MB' },
+                      { label: '图片或压缩包', hint: '支持多选和 zip，单张不超过 20 MB' },
                       h(
                         'div',
                         { style: inline.chooser },
@@ -447,7 +450,7 @@ export default defineClientExtension(({ React, host }) => ({
                           'span',
                           { style: inline.note },
                           files.length === 0
-                            ? '还没有选择'
+                            ? '未选择文件'
                             : `已选 ${files.length} 个文件，共 ${megabytes(files.reduce((sum, file) => sum + file.size, 0))}`,
                         ),
                         h('input', {
@@ -465,11 +468,11 @@ export default defineClientExtension(({ React, host }) => ({
                 h(
                   Field,
                   {
-                    label: '补写用途的模型',
+                    label: '标注模型',
                     hint:
                       visionModels.length === 0
-                        ? '没有可用的视觉模型，导入的图只有文件名可供搜索；在「设置 → 模型」添加支持视觉的模型后再导入效果更好。'
-                        : '模型看过每张图后写下用途、图中文字和标签，并判断能否在群之间流通。每张图调用一次，计入所选模型的用量。',
+                        ? '没有可用的视觉模型，可在「设置 → 模型」中添加。'
+                        : '每张图调用一次模型，计入该模型的用量。',
                   },
                   h(Select, {
                     value: model,
@@ -478,7 +481,7 @@ export default defineClientExtension(({ React, host }) => ({
                         value: option.ref,
                         label: `${option.name} · ${option.providerName}`,
                       })),
-                      { value: NO_MODEL, label: '不补写' },
+                      { value: NO_MODEL, label: '不标注' },
                     ],
                     onValueChange: setModel,
                   }),
@@ -488,7 +491,7 @@ export default defineClientExtension(({ React, host }) => ({
         Dialog,
         {
           open: true,
-          title: relabel ? '补写用途' : '导入表情包',
+          title: relabel ? '批量标注' : '导入表情包',
           onOpenChange: (open: boolean) => (open ? undefined : onClose()),
           actions: running
             ? [
@@ -501,7 +504,7 @@ export default defineClientExtension(({ React, host }) => ({
                 h(Button, { key: 'background', variant: 'primary', onClick: onClose }, '在后台继续'),
               ]
             : status !== undefined
-              ? [h(Button, { key: 'close', onClick: onClose }, '完成')]
+              ? [h(Button, { key: 'close', onClick: onClose }, '关闭')]
               : [
                   h(Button, { key: 'close', variant: 'ghost', onClick: onClose }, '取消'),
                   h(
@@ -513,7 +516,7 @@ export default defineClientExtension(({ React, host }) => ({
                       disabled: relabel ? model === NO_MODEL : files.length === 0,
                       onClick: () => void start(),
                     },
-                    relabel ? '开始补写' : `导入${files.length > 0 ? ` ${files.length} 个文件` : ''}`,
+                    relabel ? '开始标注' : `导入${files.length > 0 ? ` ${files.length} 个文件` : ''}`,
                   ),
                 ],
         },
@@ -583,13 +586,12 @@ export default defineClientExtension(({ React, host }) => ({
 
       const header = h(PageHeader, {
         title: '表情包',
-        meta: '智能体在群里收藏的表情包。通用的图在群之间流通，群里特有的只在原来的群用；智能体发图前会先确认内容。',
         actions: [
           job === undefined && overview !== undefined && overview.unlabeled > 0
             ? h(
                 Button,
                 { key: 'relabel', variant: 'ghost', onClick: () => setImporting('relabel') },
-                `补写 ${overview.unlabeled} 张的用途`,
+                `批量标注（${overview.unlabeled}）`,
               )
             : null,
           job === undefined
@@ -604,14 +606,14 @@ export default defineClientExtension(({ React, host }) => ({
 
       const grid =
         items === undefined
-          ? h(EmptyState, { title: '正在读取', loading: true })
+          ? h(EmptyState, { title: '正在加载', loading: true })
           : items.length === 0
             ? h(EmptyState, {
-                title: query ? '没有找到' : view === 'trash' ? '回收站是空的' : '还没有表情包',
+                title: query ? '没有匹配的表情包' : view === 'trash' ? '回收站为空' : '还没有表情包',
                 description: query
-                  ? '换个说法试试，或者看看别的分类。'
+                  ? '换个关键词试试。'
                   : view === 'all'
-                    ? '群里有人发表情包时，启用了本扩展的智能体会收藏合适的；也可以点「导入」批量添加。'
+                    ? '智能体会在聊天中自动收集，也可以批量导入。'
                     : undefined,
               })
             : h(
@@ -626,7 +628,7 @@ export default defineClientExtension(({ React, host }) => ({
                   ? h(
                       Button,
                       { variant: 'ghost', onClick: () => void loadMore() },
-                      `再显示一些（还有 ${total - items.length} 张）`,
+                      `加载更多（剩余 ${total - items.length} 张）`,
                     )
                   : null,
               )
@@ -642,8 +644,8 @@ export default defineClientExtension(({ React, host }) => ({
               MetricStrip,
               null,
               h(Metric, { label: '全部', value: String(overview.total) }),
-              h(Metric, { label: '流通', value: String(overview.public) }),
-              h(Metric, { label: '只在本群', value: String(overview.local) }),
+              h(Metric, { label: '公共', value: String(overview.public) }),
+              h(Metric, { label: '仅限来源频道', value: String(overview.local) }),
               h(Metric, { label: '回收站', value: String(overview.trash) }),
             ),
         h(
@@ -676,7 +678,7 @@ export default defineClientExtension(({ React, host }) => ({
                 { className: cls('stk-search') },
                 h(Input, {
                   value: query,
-                  placeholder: '按意思搜索，例如「有点委屈」',
+                  placeholder: '按情绪或场景搜索，如「有点委屈」',
                   'aria-label': '搜索表情包',
                   onChange: (event: { readonly target: { readonly value: string } }) => setQuery(event.target.value),
                 }),
@@ -686,9 +688,9 @@ export default defineClientExtension(({ React, host }) => ({
                 : h(
                     'span',
                     { className: cls('stk-pause') },
-                    h('span', { 'aria-hidden': true }, '暂停流通'),
+                    h('span', { 'aria-hidden': true }, '暂停跨频道使用'),
                     h(Switch, {
-                      label: '暂停流通',
+                      label: '暂停跨频道使用',
                       checked: overview.paused,
                       onCheckedChange: (paused: boolean) =>
                         void host.call('library.settings', { paused }).then(() => refresh()),
@@ -696,7 +698,7 @@ export default defineClientExtension(({ React, host }) => ({
                   ),
             ),
             overview?.paused === true
-              ? h(InlineFeedback, { tone: 'warning' }, '已暂停流通：每个群只用在本群出现过的表情包。')
+              ? h(InlineFeedback, { tone: 'warning' }, '已暂停跨频道使用，各频道只使用自己收集的表情包。')
               : null,
             grid,
           ),
@@ -741,7 +743,7 @@ export default defineClientExtension(({ React, host }) => ({
       }
       if (settings === undefined) {
         return error === undefined
-          ? h(EmptyState, { title: '正在读取', loading: true })
+          ? h(EmptyState, { title: '正在加载', loading: true })
           : h(InlineFeedback, { tone: 'error' }, error)
       }
       return h(
@@ -750,14 +752,14 @@ export default defineClientExtension(({ React, host }) => ({
         error === undefined ? null : h(InlineFeedback, { tone: 'error' }, error),
         h(
           PropertyRow,
-          { label: '收藏', description: `这个群里收藏了 ${settings.collected} 张` },
+          { label: '收集', description: `本频道已收集 ${settings.collected} 张` },
           h(Select, {
-            'aria-label': '在这个群收藏',
+            'aria-label': '本频道的收集方式',
             value: settings.collect,
             options: [
-              { value: 'auto', label: '由智能体判断能否流通' },
-              { value: 'local', label: '收藏的只在本群用' },
-              { value: 'off', label: '不收藏' },
+              { value: 'auto', label: '由智能体判断是否公共' },
+              { value: 'local', label: '全部仅限本频道' },
+              { value: 'off', label: '不收集' },
             ],
             onValueChange: (collect: string) => void change({ collect }),
           }),
@@ -766,12 +768,12 @@ export default defineClientExtension(({ React, host }) => ({
           PropertyRow,
           { label: '使用' },
           h(Select, {
-            'aria-label': '在这个群使用',
+            'aria-label': '本频道的使用范围',
             value: settings.use,
             options: [
-              { value: 'all', label: '库里可用的' },
-              { value: 'local', label: '只用本群出现过的' },
-              { value: 'off', label: '不发表情包' },
+              { value: 'all', label: '公共和本频道的' },
+              { value: 'local', label: '仅本频道的' },
+              { value: 'off', label: '不使用' },
             ],
             onValueChange: (use: string) => void change({ use }),
           }),
@@ -789,7 +791,7 @@ export default defineClientExtension(({ React, host }) => ({
           kind: 'host-page',
           entryId: 'library',
           title: '表情包',
-          description: '智能体收藏的表情包：浏览、整理、批量导入',
+          description: '浏览、整理和导入表情包',
           icon: {
             kind: 'svg',
             path: 'assets/library.svg',

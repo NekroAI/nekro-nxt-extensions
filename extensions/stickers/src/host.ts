@@ -172,10 +172,21 @@ const nameDescription = (name: string): string => {
   return /[\p{Script=Han}]/u.test(stem) ? clip(stem.replaceAll(/[_-]+/gu, ' '), 60) : ''
 }
 
-const GUIDE = (collect: 'auto' | 'asked' | 'off'): string =>
+type Frequency = 'smart' | 'often' | 'moderate' | 'sometimes' | 'rare'
+
+const FREQUENCY: Record<Frequency, string> = {
+  smart: '使用频率：跟着聊天气氛走，大家常发表情包、聊得轻松时多用，讨论正事时少用。',
+  often: '使用频率：多用表情包，大约每两三次回复配一张；情绪明显的时候，可以只发一张表情包当作回复。',
+  moderate: '使用频率：大约每五次回复用一次表情包，挑情绪明显的时候。',
+  sometimes: '使用频率：少用表情包，大约每十次回复用一次，留给最合适的时候。',
+  rare: '使用频率：很少用表情包，只在特别合适、不发反而显得冷淡的时候用。',
+}
+
+const GUIDE = (collect: 'auto' | 'asked' | 'off', frequency: Frequency): string =>
   [
     '你可以给群里发表情包。库里的表情包可能来自你待过的各个群。',
-    '发表情包：想用一张图表达情绪或回应时，先用 sticker_search 按想表达的意思找，比如「被夸了有点得意」；从候选里挑一张，用 sticker_use 取得 assetId，再用 send_channel_message 的 image 块发出去。都不合适就不发，也没必要每句话都配图。',
+    '发表情包：想用一张图表达情绪或回应时，先用 sticker_search 按想表达的意思找，比如「被夸了有点得意」；从候选里挑一张，用 sticker_use 取得 assetId，再用 send_channel_message 的 image 块发出去。都不合适就不发。',
+    FREQUENCY[frequency],
     collect === 'off'
       ? ''
       : [
@@ -475,7 +486,7 @@ export default defineHostExtension(async ({ harness, nxt: host }) => {
     serial(async () => {
       const options = record(input)
       const sticker = (await stickers()).get(clip(options['id'], 128))
-      if (!sticker) return fail('这张表情包已经不在库里了。')
+      if (!sticker) return fail('这张表情包已被删除。')
       const decided = options['scope'] === 'public' || options['scope'] === 'local'
       const scope = decided ? (options['scope'] as Scope) : sticker.scope
       // 管理员定了流通状态，之后补写不再改它。
@@ -496,7 +507,7 @@ export default defineHostExtension(async ({ harness, nxt: host }) => {
   const setDeleted = (input: ExtensionJsonValue, deleted: boolean) =>
     serial(async () => {
       const sticker = (await stickers()).get(clip(record(input)['id'], 128))
-      if (!sticker) return fail('这张表情包已经不在库里了。')
+      if (!sticker) return fail('这张表情包已被删除。')
       const { deletedAt: _deletedAt, ...rest } = sticker
       await put(deleted ? { ...sticker, deletedAt: Date.now() } : { ...rest, updatedAt: Date.now() })
       return { ok: true }
@@ -520,7 +531,7 @@ export default defineHostExtension(async ({ harness, nxt: host }) => {
     serial(async () => {
       const options = record(input)
       const current = await readImport()
-      if (current?.state === 'running') return fail('上一次导入还没做完，等它结束或先取消。')
+      if (current?.state === 'running') return fail('上一次导入还在进行，请等它完成或先取消。')
       const items = (Array.isArray(options['items']) ? options['items'] : [])
         .map((item) => ({ assetId: clip(record(item)['assetId'], 128), name: clip(record(item)['name'], 200) }))
         .filter((item) => item.assetId)
@@ -589,7 +600,12 @@ export default defineHostExtension(async ({ harness, nxt: host }) => {
       const ownOnly = config['range'] === 'own'
       const previewImages = [0, 2, 4, 6].includes(Number(config['previewImages'])) ? Number(config['previewImages']) : 4
 
-      nxt.prompt.static('guide', GUIDE(collect))
+      const frequency: Frequency =
+        typeof config['frequency'] === 'string' && config['frequency'] in FREQUENCY
+          ? (config['frequency'] as Frequency)
+          : 'smart'
+
+      nxt.prompt.static('guide', GUIDE(collect, frequency))
 
       if (collect !== 'off') registerSave(nxt)
       registerSearch(nxt)
@@ -897,7 +913,7 @@ export default defineHostExtension(async ({ harness, nxt: host }) => {
           harness.defineTool<Args, { readonly ok: true } | Failure>({
             name: 'sticker_update',
             description:
-              '修正一张表情包：meaning、caption、description、tags 填了才改；scope 只能改成 local（只在出现过它的群里用），改成流通要由管理员在「表情包」页面操作。',
+              '修正一张表情包：meaning、caption、description、tags 填了才改；scope 只能改成 local（只在出现过它的群里用），改成公共要由管理员在「表情包」页面操作。',
             parameters: {
               id: { type: 'string', required: true, description: '表情包编号' },
               meaning: { type: 'string', description: '新的用途说明' },
@@ -913,7 +929,7 @@ export default defineHostExtension(async ({ harness, nxt: host }) => {
             execute: (args) =>
               serial(async () => {
                 if (args.scope !== undefined && args.scope !== 'local') {
-                  return fail('只能把 scope 改成 local；改成流通要由管理员在「表情包」页面操作。')
+                  return fail('只能把 scope 改成 local；改成公共要由管理员在「表情包」页面操作。')
                 }
                 const sticker = (await stickers()).get(clip(args.id, 128))
                 if (sticker === undefined || sticker.deletedAt !== undefined) return fail('没有这张表情包。')

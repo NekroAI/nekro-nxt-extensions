@@ -63,7 +63,7 @@ describe('收藏与跨群使用', () => {
     expect(host.library.size).toBe(0)
   })
 
-  it('判断为不能流通的图只在出现过它的群里用', async () => {
+  it('判断为不能公共的图仅限来源频道使用', async () => {
     const host = await setup()
     host.addPicture('ast_CHAT', { channels: [ROOM_A.id] })
     host.useChannel(ROOM_A)
@@ -74,7 +74,7 @@ describe('收藏与跨群使用', () => {
     expect((await host.call('sticker_use', { id: 'ast_CHAT' })).text).toContain('不能在这个群用')
   })
 
-  it('同一张图在另一个群再收藏时合并，认为不能流通就收紧；外观相近的不同图分开保存', async () => {
+  it('同一张图在另一个群再收藏时合并，认为不能公共就收紧；外观相近的不同图分开保存', async () => {
     const host = await setup()
     host.addPicture('ast_ONE', { channels: [ROOM_A.id, ROOM_B.id], info: { dhash: '00ff00ff00ff00ff' } })
     host.addPicture('ast_SAME_TEMPLATE', { channels: [ROOM_B.id], info: { dhash: '00ff00ff00ff00fe' } })
@@ -139,7 +139,7 @@ describe('群与智能体的设置', () => {
     expect(await host.rpc('channel.get', null)).toBeNull()
   })
 
-  it('暂停流通后只能用本群出现过的图', async () => {
+  it('暂停跨频道使用后只能用来源频道的图', async () => {
     const host = await setup()
     host.addPicture('ast_A', { channels: [ROOM_A.id] })
     host.useChannel(ROOM_A)
@@ -178,10 +178,27 @@ describe('群与智能体的设置', () => {
     expect(host.prompts.static.get('guide')).toContain('只在有人请你收藏')
     expect(host.prompts.static.get('guide')).toContain('shareable')
   })
+
+  it('使用频率写进说明，默认跟着聊天气氛', async () => {
+    const smart = await setup()
+    expect(smart.prompts.static.get('guide')).toContain('跟着聊天气氛')
+    for (const [frequency, text] of [
+      ['often', '每两三次回复'],
+      ['moderate', '每五次回复'],
+      ['sometimes', '每十次回复'],
+      ['rare', '很少用表情包'],
+    ] as const) {
+      const host = await setup({ config: { frequency } })
+      const guide = host.prompts.static.get('guide') ?? ''
+      expect(guide).toContain(text)
+      // 不超过 extension.json 中 context 声明的 1600 字。
+      expect(guide.length).toBeLessThanOrEqual(1600)
+    }
+  })
 })
 
 describe('整理与回收站', () => {
-  it('智能体只能收紧流通，页面可以放开；删除进回收站并能恢复', async () => {
+  it('智能体只能收紧使用范围，页面可以放开；删除进回收站并能恢复', async () => {
     const host = await setup()
     host.addPicture('ast_A', { channels: [ROOM_A.id] })
     host.useChannel(ROOM_A)
@@ -242,7 +259,7 @@ describe('批量导入', () => {
   }
   const text = { ...vision, ref: 'fixture:text', model: 'text', name: '纯文本模型', vision: false }
 
-  it('用所选的视觉模型补写用途和配文，不宜流通的图只留在库里', async () => {
+  it('用所选的视觉模型标注，不宜公共的图仅限来源频道', async () => {
     const replies: Record<string, string> = {
       ast_OK:
         '```json\n{"meaning":"表达开心，适合庆祝时","caption":"好耶","description":"小猫举手","tags":["开心","猫"],"sticker":true,"shareable":true}\n```',
@@ -303,11 +320,11 @@ describe('批量导入', () => {
       origin: 'import',
     })
     expect(byId['ast_SHOT']).toMatchObject({ scope: 'local' })
-    // 选了模型却没判断成的不能直接流通。
+    // 选了模型却没判断成的不能直接设为公共。
     expect(byId['ast_BAD']).toMatchObject({ meaning: '', description: '猫猫震惊', scope: 'local' })
     expect(byId['ast_FLAKY']).toMatchObject({ meaning: '表达疑惑', scope: 'public' })
 
-    // 再次导入：已有用途的跳过，没写用途的补写。
+    // 再次导入：已标注的跳过，未标注的重新标注。
     replies['ast_BAD'] =
       '{"meaning":"表达震惊","caption":"","description":"猫","tags":["震惊"],"sticker":true,"shareable":true}'
     expect(
@@ -320,12 +337,12 @@ describe('批量导入', () => {
       }),
     ).toMatchObject({ job: { total: 1, skipped: 1 } })
     await vi.waitFor(async () => expect(await host.rpc('import.status')).toMatchObject({ state: 'done' }))
-    // 补写时模型判断能流通，才放开。
+    // 重新标注时模型判断可以公共，才放开。
     host.useChannel(ROOM_A)
     expect((await host.call('sticker_search', { query: '震惊' })).value).toMatchObject({ items: [{ id: 'ast_BAD' }] })
   })
 
-  it('补写时模型判断不宜流通的图改成只在本群', async () => {
+  it('重新标注时模型判断不宜公共的图改为仅限来源频道', async () => {
     const host = await setup({
       models: [vision],
       modelReply: () =>

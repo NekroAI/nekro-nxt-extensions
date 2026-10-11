@@ -1,5 +1,5 @@
 {
-  "summary": "智能体在群里收藏表情包，聊天时按意思挑一张发出去；通用的表情包在群之间流通，群里特有的内容只留在原来的群。支持批量导入和用视觉模型补写描述。",
+  "summary": "让智能体用表情包表达情绪：在聊天中收集表情包，按语境挑一张发出。公共表情包跨频道共享，支持批量导入并由视觉模型自动标注。",
   "tags": ["表情包", "娱乐", "群聊", "图片", "页面"],
   "sourceUrl": "https://github.com/NekroAI/nekro-nxt-extensions/tree/main/extensions/stickers"
 }

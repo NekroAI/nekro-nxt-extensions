@@ -1,36 +1,65 @@
 {
   "id": "ext_7T93Z3095PRF7PRDP39TCREGC4",
   "slug": "stickers",
-  "displayName": "表情包",
-  "description": "智能体在群聊里收藏别人发的表情包，聊天时按意思挑一张发出去。表情包可以在不同群之间流通，群里特有的截图和私密内容留在原来的群；在「表情包」页面浏览、整理和批量导入。",
+  "displayName": "Emotion 表情包",
+  "description": "让智能体用表情包表达情绪：在聊天中收集大家常用的表情包，回复时挑一张合适的发出。公共表情包在各个频道共享，已有的表情包可以批量导入。",
   "createdAt": 1791660757053,
-  "requires": { "sdk": 8 },
+  "requires": {
+    "sdk": 8
+  },
   "clientCss": "assets/client.module.css",
   "permissions": {
     "permissions": ["channels.read", "agents.read"],
     "networkOrigins": [],
     "host": {
-      "storage": { "quotaBytes": 33554432 },
-      "assets": { "library": {} },
+      "storage": {
+        "quotaBytes": 33554432
+      },
+      "assets": {
+        "library": {}
+      },
       "index": {
         "collections": [
           {
             "name": "stickers",
             "fields": [
-              { "name": "meaning", "weight": 2 },
-              { "name": "caption", "weight": 1.5 },
-              { "name": "description", "weight": 1 },
-              { "name": "tags", "weight": 1 }
+              {
+                "name": "meaning",
+                "weight": 2
+              },
+              {
+                "name": "caption",
+                "weight": 1.5
+              },
+              {
+                "name": "description",
+                "weight": 1
+              },
+              {
+                "name": "tags",
+                "weight": 1
+              }
             ],
             "filters": ["scope", "sources", "collector"]
           }
         ]
       },
-      "models": { "maxCallsPerMinute": 60, "maxOutputTokens": 1024 }
+      "models": {
+        "maxCallsPerMinute": 60,
+        "maxOutputTokens": 1024
+      }
     },
     "agent": {
-      "assets": { "library": {} },
-      "context": [{ "name": "guide", "kind": "static", "maxChars": 1600 }]
+      "assets": {
+        "library": {}
+      },
+      "context": [
+        {
+          "name": "guide",
+          "kind": "static",
+          "maxChars": 1600
+        }
+      ]
     }
   },
   "config": {
@@ -41,36 +70,136 @@
           "collect": {
             "type": "union",
             "list": [
-              { "type": "const", "value": "auto", "meta": { "description": "看到合适的就收藏" } },
-              { "type": "const", "value": "asked", "meta": { "description": "有人要求时才收藏" } },
-              { "type": "const", "value": "off", "meta": { "description": "不收藏" } }
+              {
+                "type": "const",
+                "value": "auto",
+                "meta": {
+                  "description": "自动收集"
+                }
+              },
+              {
+                "type": "const",
+                "value": "asked",
+                "meta": {
+                  "description": "被要求时收集"
+                }
+              },
+              {
+                "type": "const",
+                "value": "off",
+                "meta": {
+                  "description": "不收集"
+                }
+              }
             ],
             "meta": {
-              "description": "收藏表情包",
-              "default": "auto",
-              "hint": "智能体收藏时会用视觉判断这张图能不能带到别的群。"
+              "description": "收集策略",
+              "default": "auto"
             }
           },
           "range": {
             "type": "union",
             "list": [
-              { "type": "const", "value": "all", "meta": { "description": "所有智能体收藏的" } },
-              { "type": "const", "value": "own", "meta": { "description": "只用自己收藏的" } }
+              {
+                "type": "const",
+                "value": "all",
+                "meta": {
+                  "description": "所有智能体收集的"
+                }
+              },
+              {
+                "type": "const",
+                "value": "own",
+                "meta": {
+                  "description": "仅自己收集的"
+                }
+              }
             ],
-            "meta": { "description": "能用的表情包", "default": "all" }
+            "meta": {
+              "description": "可用表情包",
+              "default": "all"
+            }
+          },
+          "frequency": {
+            "type": "union",
+            "list": [
+              {
+                "type": "const",
+                "value": "smart",
+                "meta": {
+                  "description": "智能判断"
+                }
+              },
+              {
+                "type": "const",
+                "value": "often",
+                "meta": {
+                  "description": "频繁（约每 3 次回复）"
+                }
+              },
+              {
+                "type": "const",
+                "value": "moderate",
+                "meta": {
+                  "description": "适中（约每 5 次回复）"
+                }
+              },
+              {
+                "type": "const",
+                "value": "sometimes",
+                "meta": {
+                  "description": "偶尔（约每 10 次回复）"
+                }
+              },
+              {
+                "type": "const",
+                "value": "rare",
+                "meta": {
+                  "description": "极少"
+                }
+              }
+            ],
+            "meta": {
+              "description": "使用频率",
+              "default": "smart"
+            }
           },
           "previewImages": {
             "type": "union",
             "list": [
-              { "type": "const", "value": 0, "meta": { "description": "不附图" } },
-              { "type": "const", "value": 2, "meta": { "description": "2 张" } },
-              { "type": "const", "value": 4, "meta": { "description": "4 张" } },
-              { "type": "const", "value": 6, "meta": { "description": "6 张" } }
+              {
+                "type": "const",
+                "value": 0,
+                "meta": {
+                  "description": "不提供"
+                }
+              },
+              {
+                "type": "const",
+                "value": 2,
+                "meta": {
+                  "description": "2 张"
+                }
+              },
+              {
+                "type": "const",
+                "value": 4,
+                "meta": {
+                  "description": "4 张"
+                }
+              },
+              {
+                "type": "const",
+                "value": 6,
+                "meta": {
+                  "description": "6 张"
+                }
+              }
             ],
             "meta": {
-              "description": "搜索时附图",
+              "description": "检索预览图数量",
               "default": 4,
-              "hint": "附上候选图，智能体用视觉确认后再发，也会顺手修正写错的描述、清理不合适的图。上文已经出现过的图不会重复附上。模型没有视觉能力时只看文字。"
+              "hint": "检索结果附带的候选图片，供智能体核对内容。需要模型支持视觉。"
             }
           }
         }
@@ -81,41 +210,79 @@
     {
       "kind": "tool",
       "name": "sticker_save",
-      "description": "收藏当前频道里的一张表情包，写下它的用途、图里的文字和能否带到别的群"
+      "description": "收集当前频道中的一张表情包，记录用途、图中文字和是否公共"
     },
     {
       "kind": "tool",
       "name": "sticker_search",
-      "description": "按想表达的意思找表情包，返回候选并附图",
-      "verificationInput": { "query": "开心" }
+      "description": "按想表达的情绪检索表情包，返回候选和预览图",
+      "verificationInput": {
+        "query": "开心"
+      }
     },
     {
       "kind": "tool",
       "name": "sticker_use",
-      "description": "准备发送一张表情包，返回可以发送的 assetId"
+      "description": "取得可以发送的表情包图片"
     },
     {
       "kind": "tool",
       "name": "sticker_update",
-      "description": "修正一张表情包的描述，或改成只在出现过它的群里使用"
+      "description": "修正表情包的描述，或改为仅限来源频道"
     },
     {
       "kind": "tool",
       "name": "sticker_remove",
-      "description": "把不是表情包或不该保留的图移进回收站"
+      "description": "将表情包移入回收站"
     },
-    { "kind": "rpc", "method": "library.overview" },
-    { "kind": "rpc", "method": "library.list" },
-    { "kind": "rpc", "method": "library.update" },
-    { "kind": "rpc", "method": "library.remove" },
-    { "kind": "rpc", "method": "library.restore" },
-    { "kind": "rpc", "method": "library.settings" },
-    { "kind": "rpc", "method": "import.models" },
-    { "kind": "rpc", "method": "import.start" },
-    { "kind": "rpc", "method": "import.status" },
-    { "kind": "rpc", "method": "import.cancel" },
-    { "kind": "rpc", "method": "channel.get" },
-    { "kind": "rpc", "method": "channel.set" },
+    {
+      "kind": "rpc",
+      "method": "library.overview"
+    },
+    {
+      "kind": "rpc",
+      "method": "library.list"
+    },
+    {
+      "kind": "rpc",
+      "method": "library.update"
+    },
+    {
+      "kind": "rpc",
+      "method": "library.remove"
+    },
+    {
+      "kind": "rpc",
+      "method": "library.restore"
+    },
+    {
+      "kind": "rpc",
+      "method": "library.settings"
+    },
+    {
+      "kind": "rpc",
+      "method": "import.models"
+    },
+    {
+      "kind": "rpc",
+      "method": "import.start"
+    },
+    {
+      "kind": "rpc",
+      "method": "import.status"
+    },
+    {
+      "kind": "rpc",
+      "method": "import.cancel"
+    },
+    {
+      "kind": "rpc",
+      "method": "channel.get"
+    },
+    {
+      "kind": "rpc",
+      "method": "channel.set"
+    },
     {
       "kind": "panel",
       "id": "channel",
@@ -127,7 +294,7 @@
       "kind": "host-page",
       "entryId": "library",
       "title": "表情包",
-      "description": "智能体收藏的表情包：浏览、整理、批量导入",
+      "description": "浏览、整理和导入表情包",
       "icon": {
         "kind": "svg",
         "path": "assets/library.svg",
@@ -135,7 +302,9 @@
       },
       "objectPane": "hidden",
       "startPath": "",
-      "rail": { "order": 60 }
+      "rail": {
+        "order": 60
+      }
     }
   ]
 }
