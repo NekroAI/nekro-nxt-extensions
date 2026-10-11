@@ -27,7 +27,7 @@
 1. 新扩展：在 `extensions/<名称>/` 写 `extension.json`、`src/host.ts`（需要界面时加 `src/client.ts`）、`tests/host.test.ts`、`README.md` 与 `listing.json`，`id` 用 `ext_` 加 26 位大写字母数字，创建后不再改变。`README.md` 面向普通用户（一句话定位、能做什么、怎么用、配置与凭据、权限及原因、注意事项），不写开发术语，会作为社区页面的介绍；`listing.json` 写一句话简介、标签与源码地址。
 2. `pnpm check` 通过后运行 `pnpm release:prepare <名称>` 生成 Revision；内容未变化时打包结果逐字节相同，CI 发现内容变化而 `release.json` 未更新会失败。
 3. 用一次性数据目录的 NekroNXT 运行 `pnpm verify`，确认通过导入验证。
-4. 在根 README 的「扩展一览」登记。
-5. 需要更新说明时，在 `release.json` 中写 `notes`（不影响包内容）；推送 `release-YYYY-MM-DD` 标签发布。
+4. 在根 README 的「扩展一览」和根 `catalog.json` 登记，清单 ID 与 extension.json 一致。退役保留 ID 与原因，不直接删除清单条目。
+5. 需要更新说明时，在 `release.json` 中写 `notes`（不影响包内容）；代码、介绍或维护状态变化后运行 `pnpm catalog:bump`，推送 `release-YYYY-MM-DD` 标签发布；手动 Release 工作流只同步 main 的状态。
 
 提交信息使用 `type(scope): 中文主题`，类型为 `feat`、`fix`、`refactor`、`docs`、`test`。

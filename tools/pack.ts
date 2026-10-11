@@ -1,3 +1,4 @@
+import { activeEntries } from './catalog.js'
 /**
  * 把 `extensions/<name>/` 打包为 `dist/<slug>.nxt-extension`。
  *
@@ -233,9 +234,8 @@ const main = (): void => {
   const args = process.argv.slice(2)
   const bump = args.includes('--bump')
   const only = args.filter((arg) => !arg.startsWith('--'))
-  const names = readdirSync(EXTENSIONS, { withFileTypes: true })
-    .filter((entry) => entry.isDirectory() && existsSync(path.join(EXTENSIONS, entry.name, 'extension.json')))
-    .map((entry) => entry.name)
+  const names = activeEntries()
+    .map((entry) => entry.directory)
     .filter((name) => only.length === 0 || only.includes(name))
     .sort()
   if (only.length > 0 && names.length !== only.length) throw new Error(`找不到扩展：${only.join('、')}`)

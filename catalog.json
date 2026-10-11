@@ -1,0 +1,67 @@
+{
+  "schemaVersion": 1,
+  "repository": "NekroAI/nekro-nxt-extensions",
+  "version": 1,
+  "entries": [
+    {
+      "extensionId": "ext_01M4B6TAC9D0DXG4G4DYQB1XZA",
+      "state": "active",
+      "directory": "daily-fortune"
+    },
+    {
+      "extensionId": "ext_01M4B6TAC9938JP3T3EG7Q0E21",
+      "state": "active",
+      "directory": "dice"
+    },
+    {
+      "extensionId": "ext_01M4B6TAC9RDRYNSE2Y86ZMBJS",
+      "state": "active",
+      "directory": "festival"
+    },
+    {
+      "extensionId": "ext_01M4B6TAC9MQJDWFYVZ76WCBJK",
+      "state": "active",
+      "directory": "group-admin"
+    },
+    {
+      "extensionId": "ext_01M4B6TAC9WQVDC9QEYWZB5QQY",
+      "state": "active",
+      "directory": "image-gen"
+    },
+    {
+      "extensionId": "ext_01M4B6TAC9TKX43QJA2YNZ6HHQ",
+      "state": "active",
+      "directory": "message-guard"
+    },
+    {
+      "extensionId": "ext_01M4FESR04CMEEDWQZZ5T3CR18",
+      "state": "active",
+      "directory": "purchase-list"
+    },
+    {
+      "extensionId": "ext_01M4B6TAC9RERQ6JYMYNB1G761",
+      "state": "active",
+      "directory": "rss"
+    },
+    {
+      "extensionId": "ext_7T93Z3095PRF7PRDP39TCREGC4",
+      "state": "active",
+      "directory": "stickers"
+    },
+    {
+      "extensionId": "ext_01M4B6TAC9X0K9BMQC226V1JWG",
+      "state": "active",
+      "directory": "tts"
+    },
+    {
+      "extensionId": "ext_01M4B6TAC9BDSF3E1MNFGX8EAH",
+      "state": "active",
+      "directory": "web-reader"
+    },
+    {
+      "extensionId": "ext_01M4B6TAC9V9F8QK3006371KF8",
+      "state": "active",
+      "directory": "web-search"
+    }
+  ]
+}

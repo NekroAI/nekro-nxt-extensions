@@ -10,10 +10,13 @@
     "build": "tsx tools/pack.ts",
     "release:prepare": "tsx tools/pack.ts --bump",
     "verify": "tsx tools/verify.ts",
-    "check": "pnpm typecheck && pnpm test && pnpm build",
+    "check": "pnpm catalog:check && pnpm typecheck && pnpm test && pnpm build",
     "format": "prettier --write .",
-    "publish:community": "tsx tools/publish.ts",
-    "listing:sync": "tsx tools/listing-sync.ts"
+    "publish:community": "tsx tools/community-sync.ts",
+    "listing:sync": "tsx tools/community-sync.ts --listing-only",
+    "catalog:check": "tsx tools/catalog.ts",
+    "catalog:bump": "tsx tools/catalog.ts --bump",
+    "catalog:sync": "tsx tools/community-sync.ts --state-only"
   },
   "packageManager": "pnpm@11.7.0",
   "engines": {

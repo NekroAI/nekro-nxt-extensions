@@ -1,3 +1,4 @@
+import { activeEntries } from './catalog.js'
 /**
  * 社区条目信息：作者自己写的简介、介绍、标签与源码地址。它们不进扩展包，不影响 Revision 摘要。
  *
@@ -6,7 +7,7 @@
  *
  * 发布新版本时随包附带（`pnpm publish:community`），也可以只更新条目信息（`pnpm listing:sync`）。
  */
-import { existsSync, readdirSync, readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { z } from 'zod'
 
@@ -73,9 +74,8 @@ export const loadListing = (directory: string): Listing => {
 
 /** 全部扩展的条目信息，按目录名排序；`only` 非空时只取这些目录。 */
 export const loadListings = (only: readonly string[] = []): readonly Listing[] => {
-  const names = readdirSync(EXTENSIONS, { withFileTypes: true })
-    .filter((entry) => entry.isDirectory() && existsSync(path.join(EXTENSIONS, entry.name, 'extension.json')))
-    .map((entry) => entry.name)
+  const names = activeEntries()
+    .map((entry) => entry.directory)
     .filter((name) => only.length === 0 || only.includes(name))
     .sort()
   if (only.length > 0 && names.length !== only.length) {

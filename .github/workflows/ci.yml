@@ -10,9 +10,13 @@ permissions:
 
 jobs:
   check:
+    outputs:
+      has_extensions: ${{ steps.catalog.outputs.has_extensions }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
@@ -21,7 +25,17 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm exec prettier --check .
       - run: pnpm check
+        env:
+          CATALOG_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+      - id: catalog
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync, appendFileSync } from 'node:fs'
+          const active = JSON.parse(readFileSync('catalog.json', 'utf8')).entries.some(entry => entry.state === 'active')
+          appendFileSync(process.env.GITHUB_OUTPUT, `has_extensions=${active}\n`)
+          NODE
       - uses: actions/upload-artifact@v4
+        if: steps.catalog.outputs.has_extensions == 'true'
         with:
           name: extensions
           path: dist/*.nxt-extension
@@ -29,12 +43,15 @@ jobs:
   verify:
     # 用最新的 NekroNXT 预览版走一遍与用户导入相同的预检、构建与验证。
     needs: check
+    if: needs.check.outputs.has_extensions == 'true'
     runs-on: ubuntu-latest
     env:
       NXT_URL: http://127.0.0.1:4960
       NXT_MANAGEMENT_KEY: ci-only-management-key-0123456789abcdef
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:

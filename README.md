@@ -53,7 +53,24 @@ docker run --rm -d -p 4960:4960 -e NEKRO_MANAGEMENT_KEY=<至少32个字符> ghcr
 NXT_MANAGEMENT_KEY=<同上> pnpm verify
 ```
 
-发布：推送 `release-YYYY-MM-DD` 标签后，CI 检查并在 NekroNXT 预览版上验证，然后以官方身份发布到社区（内容没有变化的扩展会跳过），并创建附带全部扩展包的 GitHub Release。发布时一并提交条目信息（简介、介绍、标签、源码地址）；只改了说明而包内容没变时，用 `COMMUNITY_PUBLISH_TOKEN=<令牌> pnpm listing:sync [名称...]` 单独更新（`--dry-run` 预览要提交的内容）。需要仓库密钥 `COMMUNITY_PUBLISH_TOKEN`，由社区管理员在后台「扩展 → 官方发布令牌」创建。
+发布：推送 `release-*` 标签后，CI 检查并在 NekroNXT 预览版上验证，再同步仓库清单、发布允许分发的扩展并更新介绍，最后创建或更新 GitHub Release。内容没变会跳过上传，但仍同步介绍；管理员下架、归档或仓库退役的扩展不会作为本次的新附件发布。旧 GitHub Release 附件不自动删除。
+
+仓库密钥 `COMMUNITY_PUBLISH_TOKEN` 必须在社区后台「令牌」页绑定 `NekroAI/nekro-nxt-extensions`。先部署支持清单同步的社区，再绑定令牌，最后启用这里的工作流。创建令牌的账号仍需保持管理员和官方成员身份。
+
+### 清单、退役与恢复
+
+根目录 `catalog.json` 是本仓库参与分发的唯一清单。条目 ID 一旦创建不能更换。维护条目记录 `extensionId/state: active/directory`；退役条目保留 `extensionId/state: retired/reason`，不得直接删掉记录。源码目录可在退役后删除，也可保留作为参考；退役目录不参与打包、导入验证或发布。打包和发布只消费清单中的条目，忽略 `dist` 中残留的其他包。
+
+变更代码后先运行 `pnpm release:prepare <名称>`。每次要同步的新内容（包括 README、listing.json、Revision 或维护状态）都运行 `pnpm catalog:bump`，提交新的清单版本。相同版本的清单内容和介绍摘要必须一致；旧版本不能覆盖新版本。`pnpm catalog:check` 校验 ID、目录及退役记录，CI 还对比基准提交，拒绝删除已登记的 ID。
+
+- 退役：把清单条目改成 `retired` 并填写原因，提升清单版本，提交后发布标签，或手动运行 Release 工作流。手动运行始终同步 `main` 的状态，不上传包或创建 GitHub Release。
+- 恢复维护：使用原 ID 恢复 `active` 和目录，提升版本后同步。社区已有管理员下架或归档时继续保持限制，不能靠 CI 恢复。
+- 只改介绍：`COMMUNITY_PUBLISH_TOKEN=<令牌> pnpm listing:sync [名称...]`；`--dry-run` 只显示完整清单和摘要，不联网。指定名称只限制内容更新，完整清单的维护状态仍会同步。
+- 只同步状态：`pnpm catalog:sync`。`COMMUNITY_URL` 默认正式站；测试站显式设置为 `https://nxt-staging.nekro.ai`。
+
+`POST /api/v1/official/catalog/sync` 提交完整清单、Git 提交、当前 Revision ID 和条目信息摘要。社区保留管理员状态并返回每项的限制和分发许可。CI 只把明确的 `extension_delisted/extension_retired/extension_archived` 当作跳过；令牌失效、接口异常和校验错误都失败。某个扩展失败后继续处理其他条目，已成功上传的版本不会回滚，重试时按重复版本跳过。
+
+每次联网同步在 `dist/community-report.json` 写逐项报告，GitHub Actions 同时显示摘要并保留报告附件。GitHub Release 在所有处理完成且没有真正失败后发布，只上传最终获准分发的包；已存在的 Release 可重试更新。
 
 编写约定见 [AGENTS.md](AGENTS.md)。
 

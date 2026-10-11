@@ -1,3 +1,4 @@
+import { activeEntries } from './catalog.js'
 /**
  * 把 `dist/*.nxt-extension` 导入一个正在运行的 NekroNXT，走与用户「工坊 → 导入」完全相同的预检、构建与验证。
  *
@@ -7,7 +8,7 @@
  *
  * 请使用一次性的数据目录运行 NekroNXT：导入的扩展会留在那个实例中（不会自动启用）。
  */
-import { readdirSync, readFileSync } from 'node:fs'
+import { readFileSync } from 'node:fs'
 import path from 'node:path'
 
 const ROOT = path.resolve(import.meta.dirname, '..')
@@ -55,10 +56,14 @@ const main = async (): Promise<void> => {
     })
     if (!login.ok) throw new Error(`登录 NekroNXT 失败：${await problem(login)}`)
   }
-  const packages = readdirSync(DIST)
-    .filter((name) => name.endsWith('.nxt-extension'))
+  const packages = activeEntries()
+    .map((entry) => {
+      const definition = JSON.parse(
+        readFileSync(path.join(ROOT, 'extensions', entry.directory, 'extension.json'), 'utf8'),
+      ) as { slug: string }
+      return `${definition.slug}.nxt-extension`
+    })
     .sort()
-  if (packages.length === 0) throw new Error('dist 中没有扩展包，请先运行 pnpm build。')
   let failed = 0
   for (const name of packages) {
     const bytes = readFileSync(path.join(DIST, name))

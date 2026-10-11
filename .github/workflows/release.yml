@@ -5,6 +5,7 @@ name: Release
 on:
   push:
     tags: ['release-*']
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -21,6 +22,8 @@ jobs:
       NXT_MANAGEMENT_KEY: ci-only-management-key-0123456789abcdef
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && 'main' || github.ref }}
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
@@ -29,7 +32,13 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm exec prettier --check .
       - run: pnpm check
+      - name: Sync repository state
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          COMMUNITY_PUBLISH_TOKEN: ${{ secrets.COMMUNITY_PUBLISH_TOKEN }}
+        run: pnpm catalog:sync
       - name: Start NekroNXT
+        if: github.event_name != 'workflow_dispatch'
         run: |
           docker run -d --name nxt -p 4960:4960 -e NEKRO_MANAGEMENT_KEY="$NXT_MANAGEMENT_KEY" ghcr.io/nekroai/nekro-nxt:preview
           for i in $(seq 1 90); do
@@ -39,15 +48,21 @@ jobs:
           docker logs nxt
           exit 1
       - run: pnpm verify
+        if: github.event_name != 'workflow_dispatch'
       - name: Publish to the community
+        if: github.event_name != 'workflow_dispatch'
         env:
           COMMUNITY_PUBLISH_TOKEN: ${{ secrets.COMMUNITY_PUBLISH_TOKEN }}
         run: pnpm publish:community
-      - name: Sync listing info
-        env:
-          COMMUNITY_PUBLISH_TOKEN: ${{ secrets.COMMUNITY_PUBLISH_TOKEN }}
-        run: pnpm listing:sync
       - name: GitHub Release
+        if: github.event_name != 'workflow_dispatch'
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" dist/*.nxt-extension --title "$GITHUB_REF_NAME" --notes "官方种子扩展包，可在 NekroNXT「工坊 → 导入」中导入，或在「社区 → 发现」中筛选官方安装。"
+        run: pnpm exec tsx tools/github-release.ts
+      - name: Preserve synchronization report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: community-report
+          path: dist/community-report.json
+          if-no-files-found: ignore
