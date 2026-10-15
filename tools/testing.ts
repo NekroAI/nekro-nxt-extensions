@@ -363,6 +363,9 @@ export const createTestHost = async (
       registerAdapter: () => {
         throw new Error('测试宿主不支持适配器。')
       },
+      registerCommand: () => {
+        throw new Error('测试宿主不支持聊天命令。')
+      },
       onInbound: (handler) => {
         inbound = handler
         return () => (inbound = undefined)

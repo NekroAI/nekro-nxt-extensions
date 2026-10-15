@@ -39,7 +39,7 @@ pnpm verify           # 把 dist/ 中的包导入一个运行中的 NekroNXT 验
 - `extension.json`：身份、展示信息与 Manifest 字段（权限、配置、贡献与验证样例）；
 - `src/host.ts`（以及需要界面时的 `src/client.ts`）：单文件源码，只导入 `@nekro-nxt/extension-sdk`；
 - `tests/`：用 [`tools/testing.ts`](tools/testing.ts) 的内存替身做的单元测试；
-- `release.json`：当前 Revision 的锁定记录，由 `pnpm release:prepare` 维护；
+- `release.json`：当前 Revision 的锁定记录，由 `pnpm release:prepare` 维护；其中的 `lineage` 记录这个 Revision 接在哪个 Revision 之后，写进包的 Manifest，社区据此要求每次发布都接在上一次之后；
 - `README.md`：给使用者的说明，去掉标题后作为社区页面的介绍；
 - `listing.json`：社区条目的一句话简介（≤160 字）、标签（≤8 个）与源码地址；
 - `assets/icon.svg|png|webp`（可选，只放一个）：扩展图标，正方形 64–512 像素、不超过 128 KiB，在工坊、社区和智能体的扩展列表中显示。

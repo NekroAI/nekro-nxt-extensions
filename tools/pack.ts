@@ -26,6 +26,9 @@ import path from 'node:path'
 import { z } from 'zod'
 
 const ROOT = path.resolve(import.meta.dirname, '..')
+/** NekroNXT capability level that understands Manifest `lineage` and `dataVersion`. */
+const LINEAGE_SDK_LEVEL = 10
+const MAX_ANCESTRY = 256
 const EXTENSIONS = path.join(ROOT, 'extensions')
 const DIST = path.join(ROOT, 'dist')
 
@@ -52,6 +55,14 @@ const LockSchema = z
     createdAt: z.number().int().positive(),
     /** 发布到社区时的更新说明；不影响包内容。 */
     notes: z.string().max(2000).optional(),
+    /**
+     * 版本谱系：接在哪个 Revision 之后、更早的 Revision（从近到远）。写入 Manifest 的 `lineage`，社区据此要求快进发布、
+     * NekroNXT 据此判断本机与社区谁更新。之前的锁定记录没有这一项，下次准备发布时自动接上。
+     */
+    lineage: z
+      .object({ parent: z.string().regex(/^xrv_[0-9A-Za-z]+$/u).nullable(), ancestry: z.array(z.string()).max(256) })
+      .strict()
+      .optional(),
   })
   .strict()
 
@@ -130,7 +141,12 @@ export const buildExtension = (directory: string, options: { readonly bump: bool
   const lockText = readText(lockFile)
   const previous = lockText === undefined ? undefined : LockSchema.parse(JSON.parse(lockText))
 
-  const manifestFields = (revisionId: string) => ({
+  // 谱系需要 NekroNXT 能力等级 10；没有谱系的旧锁定记录保持原样，重复打包仍逐字节不变。
+  const requiresFor = (lineage: Lock['lineage']) =>
+    lineage === undefined
+      ? definition.requires
+      : { sdk: Math.max(definition.requires?.sdk ?? 0, LINEAGE_SDK_LEVEL) }
+  const manifestFields = (revisionId: string, lineage: Lock['lineage']) => ({
     schemaVersion: 7,
     extensionId: definition.id,
     revisionId,
@@ -138,7 +154,8 @@ export const buildExtension = (directory: string, options: { readonly bump: bool
       ...(sources.host === undefined ? {} : { host: 'source/host.ts' }),
       ...(sources.client === undefined ? {} : { client: 'source/client.ts' }),
     },
-    ...(definition.requires === undefined ? {} : { requires: definition.requires }),
+    ...(requiresFor(lineage) === undefined ? {} : { requires: requiresFor(lineage) }),
+    ...(lineage === undefined ? {} : { lineage }),
     ...(definition.permissions === undefined ? {} : { permissions: definition.permissions }),
     ...(definition.config === undefined ? {} : { config: definition.config }),
     ...(definition.clientCss === undefined
@@ -152,8 +169,8 @@ export const buildExtension = (directory: string, options: { readonly bump: bool
     contributions: definition.contributions,
     ...(icon === undefined ? {} : { icon: { path: icon.path, sha256: icon.sha256 } }),
   })
-  const manifestFor = (revisionId: string) => {
-    const fields = manifestFields(revisionId)
+  const manifestFor = (revisionId: string, lineage: Lock['lineage']) => {
+    const fields = manifestFields(revisionId, lineage)
     const parsed = extensionManifestSchema.safeParse(fields)
     if (parsed.success) return parsed.data
     if (icon !== undefined) {
@@ -168,7 +185,11 @@ export const buildExtension = (directory: string, options: { readonly bump: bool
   }
 
   // payloadDigest 不含身份，可以先用旧 Revision 的身份计算，判断内容是否变化。
-  const probe = revisionDigests({ manifest: manifestFor(previous?.revisionId ?? 'xrv_PROBE'), sources, resources })
+  const probe = revisionDigests({
+    manifest: manifestFor(previous?.revisionId ?? 'xrv_PROBE', previous?.lineage),
+    sources,
+    resources,
+  })
   const changed = previous?.payloadDigest !== probe.payloadDigest
   if (changed && !options.bump) {
     throw new Error(
@@ -177,14 +198,27 @@ export const buildExtension = (directory: string, options: { readonly bump: bool
   }
   const lock: Lock =
     changed || previous === undefined
-      ? {
-          revisionNumber: (previous?.revisionNumber ?? 0) + 1,
-          revisionId: newId('xrv'),
-          payloadDigest: probe.payloadDigest,
-          createdAt: Date.now(),
-        }
+      ? (() => {
+          const revisionId = newId('xrv')
+          const lineage = {
+            parent: previous?.revisionId ?? null,
+            ancestry:
+              previous === undefined
+                ? []
+                : [previous.revisionId, ...(previous.lineage?.ancestry ?? [])].slice(0, MAX_ANCESTRY),
+          }
+          // The digest is recorded for the Manifest this Revision really has (its lineage raises requires.sdk).
+          const final = revisionDigests({ manifest: manifestFor(revisionId, lineage), sources, resources })
+          return {
+            revisionNumber: (previous?.revisionNumber ?? 0) + 1,
+            revisionId,
+            payloadDigest: final.payloadDigest,
+            createdAt: Date.now(),
+            lineage,
+          }
+        })()
       : previous
-  const manifest = manifestFor(lock.revisionId)
+  const manifest = manifestFor(lock.revisionId, lock.lineage)
   const digests = revisionDigests({ manifest, sources, resources })
 
   const files: Record<string, Uint8Array> = {

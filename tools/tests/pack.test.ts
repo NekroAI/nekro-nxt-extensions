@@ -73,3 +73,34 @@ function writeIcon(directory: string, name: string, bytes: Uint8Array): void {
   mkdirSync(assets, { recursive: true })
   writeFileSync(path.join(assets, name), bytes)
 }
+
+describe('版本谱系', () => {
+  it('准备新版本时接在上一个 Revision 之后，并把谱系写进 Manifest', () => {
+    const directory = copy('dice')
+    const lockFile = path.join(directory, 'release.json')
+    const previous = JSON.parse(readFileSync(lockFile, 'utf8')) as { revisionId: string; lineage?: unknown }
+    const host = path.join(directory, 'src/host.ts')
+    writeFileSync(host, `${readFileSync(host, 'utf8')}\n// 新版本\n`)
+    const first = buildExtension(directory, { bump: true })
+    expect(first.lock.lineage).toEqual({
+      parent: previous.revisionId,
+      ancestry: [previous.revisionId, ...(((previous.lineage as { ancestry?: string[] } | undefined)?.ancestry) ?? [])],
+    })
+    const manifest = JSON.parse(strFromU8(unzipSync(first.bytes)['revision/manifest.json']!)) as {
+      lineage?: unknown
+      requires?: { sdk: number }
+    }
+    expect(manifest.lineage).toEqual(first.lock.lineage)
+    expect(manifest.requires?.sdk).toBeGreaterThanOrEqual(10)
+
+    // 内容不变时重复打包逐字节相同，不会因为谱系误判为新版本。
+    const again = buildExtension(directory, { bump: false })
+    expect(again.changed).toBe(false)
+    expect(Buffer.from(again.bytes).equals(Buffer.from(first.bytes))).toBe(true)
+
+    writeFileSync(host, `${readFileSync(host, 'utf8')}\n// 再下一个版本\n`)
+    const second = buildExtension(directory, { bump: true })
+    expect(second.lock.lineage?.parent).toBe(first.lock.revisionId)
+    expect(second.lock.lineage?.ancestry.slice(0, 2)).toEqual([first.lock.revisionId, previous.revisionId])
+  })
+})
