@@ -60,7 +60,13 @@ const LockSchema = z
      * NekroNXT 据此判断本机与社区谁更新。之前的锁定记录没有这一项，下次准备发布时自动接上。
      */
     lineage: z
-      .object({ parent: z.string().regex(/^xrv_[0-9A-Za-z]+$/u).nullable(), ancestry: z.array(z.string()).max(256) })
+      .object({
+        parent: z
+          .string()
+          .regex(/^xrv_[0-9A-Za-z]+$/u)
+          .nullable(),
+        ancestry: z.array(z.string()).max(256),
+      })
       .strict()
       .optional(),
   })
@@ -143,9 +149,7 @@ export const buildExtension = (directory: string, options: { readonly bump: bool
 
   // 谱系需要 NekroNXT 能力等级 10；没有谱系的旧锁定记录保持原样，重复打包仍逐字节不变。
   const requiresFor = (lineage: Lock['lineage']) =>
-    lineage === undefined
-      ? definition.requires
-      : { sdk: Math.max(definition.requires?.sdk ?? 0, LINEAGE_SDK_LEVEL) }
+    lineage === undefined ? definition.requires : { sdk: Math.max(definition.requires?.sdk ?? 0, LINEAGE_SDK_LEVEL) }
   const manifestFields = (revisionId: string, lineage: Lock['lineage']) => ({
     schemaVersion: 7,
     extensionId: definition.id,

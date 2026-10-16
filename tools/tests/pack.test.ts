@@ -84,7 +84,7 @@ describe('版本谱系', () => {
     const first = buildExtension(directory, { bump: true })
     expect(first.lock.lineage).toEqual({
       parent: previous.revisionId,
-      ancestry: [previous.revisionId, ...(((previous.lineage as { ancestry?: string[] } | undefined)?.ancestry) ?? [])],
+      ancestry: [previous.revisionId, ...((previous.lineage as { ancestry?: string[] } | undefined)?.ancestry ?? [])],
     })
     const manifest = JSON.parse(strFromU8(unzipSync(first.bytes)['revision/manifest.json']!)) as {
       lineage?: unknown

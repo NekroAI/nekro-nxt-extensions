@@ -5,8 +5,6 @@
   "createdAt": 1792117439500,
   "lineage": {
     "parent": "xrv_01M4N5K5EA2XB5RMMEV6VX8J8N",
-    "ancestry": [
-      "xrv_01M4N5K5EA2XB5RMMEV6VX8J8N"
-    ]
+    "ancestry": ["xrv_01M4N5K5EA2XB5RMMEV6VX8J8N"]
   }
 }
