@@ -456,6 +456,7 @@ export const createTestHost = async (
           logicalMessageId: 'msg_IN',
           channel: context.channel,
           sender: { memberId: 'mbr_ALICE', displayName: '爱丽丝' },
+          images: [],
           mentionsAgent: false,
           wouldTrigger: true,
           receivedAt: now(),

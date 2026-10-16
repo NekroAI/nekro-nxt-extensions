@@ -7,7 +7,7 @@ import {
 import styles from '../assets/client.module.css'
 
 /**
- * 「表情包」页面与频道面板：页面浏览、搜索、编辑和批量导入，面板设置单个频道的收集与使用范围。
+ * 「表情包」页面与频道面板：页面浏览、搜索、编辑、批量导入与收集设置，面板设置单个频道的收集与使用范围。
  * 图片通过 `host.assetUrl` 显示，导入时先用 `host.upload` 把图片或压缩包放进扩展资源库，再交给本机实例标注。
  */
 type View = 'all' | 'public' | 'local' | 'flowed' | 'unlabeled' | 'trash'
@@ -44,6 +44,23 @@ interface ImportStatus {
   readonly total: number
   readonly done: number
   readonly skipped: number
+  readonly failed: number
+  readonly errors: readonly string[]
+}
+
+interface Settings {
+  readonly paused: boolean
+  readonly model?: string
+  readonly threshold: number
+  readonly concurrency: number
+}
+
+interface CollectStatus {
+  readonly queued: number
+  readonly working: number
+  readonly waitingForModel: boolean
+  readonly added: number
+  readonly rejected: number
   readonly failed: number
   readonly errors: readonly string[]
 }
@@ -297,7 +314,14 @@ export default defineClientExtension(({ React, host }) => ({
                 [
                   ['来源频道', channelList(sticker.sources)],
                   ['跨频道发送', channelList(sticker.sentTo.filter((id) => !sticker.sources.includes(id)))],
-                  ['添加方式', sticker.origin === 'import' ? '导入' : `${sticker.collectorName ?? '智能体'}收集`],
+                  [
+                    '添加方式',
+                    sticker.origin === 'import'
+                      ? '导入'
+                      : sticker.collectorName
+                        ? `${sticker.collectorName}收藏`
+                        : '聊天中自动收集',
+                  ],
                   ['发送次数', String(sticker.sentCount)],
                   ['大小', `${megabytes(sticker.byteSize)}${sticker.frames > 1 ? ' · 动图' : ''}`],
                 ] as const
@@ -330,10 +354,13 @@ export default defineClientExtension(({ React, host }) => ({
       const [error, setError] = React.useState<string | undefined>(undefined)
       const picker = React.useRef<{ click(): void } | null>(null)
       React.useEffect(() => {
-        void host.call('import.models').then((value) => {
+        void Promise.all([host.call('import.models'), host.call('library.settings')]).then(([value, settings]) => {
           const list = Array.isArray(value) ? (value as unknown as readonly ModelOption[]) : []
           setModels(list)
-          if (list[0]) setModel(list[0].ref)
+          // 默认用收集设置里的标注模型。
+          const chosen = String(record(settings)['model'] ?? '')
+          const preferred = list.find((option) => option.ref === chosen) ?? list[0]
+          if (preferred) setModel(preferred.ref)
         })
         void host.call('import.status').then((value) => {
           const current = record(value)
@@ -524,6 +551,121 @@ export default defineClientExtension(({ React, host }) => ({
       )
     }
 
+    const CollectDialog = ({
+      status,
+      onClose,
+      onChanged,
+    }: {
+      readonly status: CollectStatus | undefined
+      readonly onClose: () => void
+      readonly onChanged: () => void
+    }) => {
+      const [settings, setSettings] = React.useState<Settings | undefined>(undefined)
+      const [models, setModels] = React.useState<readonly ModelOption[]>([])
+      const [error, setError] = React.useState<string | undefined>(undefined)
+      React.useEffect(() => {
+        void Promise.all([host.call('library.settings'), host.call('import.models')])
+          .then(([saved, list]) => {
+            setSettings(saved as unknown as Settings)
+            setModels(Array.isArray(list) ? (list as unknown as readonly ModelOption[]) : [])
+          })
+          .catch((reason: unknown) => setError(message(reason)))
+      }, [])
+      const change = async (input: Record<string, string | number>) => {
+        try {
+          setSettings((await host.call('library.settings', input)) as unknown as Settings)
+          setError(undefined)
+          onChanged()
+        } catch (reason) {
+          setError(message(reason))
+        }
+      }
+      const body =
+        settings === undefined
+          ? error === undefined
+            ? h(EmptyState, { title: '正在加载', loading: true })
+            : h(InlineFeedback, { tone: 'error' }, error)
+          : h(
+              Stack,
+              null,
+              error === undefined ? null : h(InlineFeedback, { tone: 'error' }, error),
+              h(
+                Field,
+                {
+                  label: '标注模型',
+                  hint:
+                    models.length === 0
+                      ? '没有可用的视觉模型，可在「设置 → 模型」中添加。'
+                      : '每张新表情包调用一次，用来写用途、判断能否公共。不选择时只排队，选好后自动开始。',
+                },
+                h(Select, {
+                  value: settings.model ?? NO_MODEL,
+                  options: [
+                    ...models.map((option) => ({
+                      value: option.ref,
+                      label: `${option.name} · ${option.providerName}`,
+                    })),
+                    { value: NO_MODEL, label: '不选择' },
+                  ],
+                  onValueChange: (model: string) => void change({ model: model === NO_MODEL ? '' : model }),
+                }),
+              ),
+              h(
+                Field,
+                { label: '收集门槛', hint: '同一个人反复发只算一次。' },
+                h(Select, {
+                  value: String(settings.threshold),
+                  options: [
+                    { value: '1', label: '出现一次就收集' },
+                    { value: '2', label: '两个人发过后收集' },
+                    { value: '3', label: '三个人发过后收集' },
+                  ],
+                  onValueChange: (threshold: string) => void change({ threshold: Number(threshold) }),
+                }),
+              ),
+              h(
+                Field,
+                { label: '同时处理', hint: '导入和收集共用。张数越多越快，模型调用也越集中。' },
+                h(Select, {
+                  value: String(settings.concurrency),
+                  options: [1, 2, 3, 4, 6, 8].map((count) => ({ value: String(count), label: `${count} 张` })),
+                  onValueChange: (concurrency: string) => void change({ concurrency: Number(concurrency) }),
+                }),
+              ),
+              status === undefined
+                ? null
+                : h(
+                    PropertyList,
+                    { framed: true },
+                    h(
+                      PropertyRow,
+                      { label: '排队中' },
+                      status.working > 0 ? `${status.queued} 张，正在处理 ${status.working} 张` : `${status.queued} 张`,
+                    ),
+                    h(PropertyRow, { label: '已收集' }, `${status.added} 张`),
+                    h(PropertyRow, { label: '判断为不收' }, `${status.rejected} 张`),
+                    status.failed > 0 ? h(PropertyRow, { label: '标注失败' }, `${status.failed} 张`) : null,
+                  ),
+              status !== undefined && status.errors.length > 0
+                ? h(
+                    'ul',
+                    { style: inline.errors },
+                    ...status.errors.slice(-5).map((line, index) => h('li', { key: `${index}-${line}` }, line)),
+                  )
+                : null,
+            )
+      return h(
+        Dialog,
+        {
+          open: true,
+          title: '收集设置',
+          onOpenChange: (open: boolean) => (open ? undefined : onClose()),
+          actions: [h(Button, { key: 'close', onClick: onClose }, '关闭')],
+        },
+        body,
+      )
+    }
+
     const LibraryPage = () => {
       const [overview, setOverview] = React.useState<Overview | undefined>(undefined)
       const [view, setView] = React.useState<View>('all')
@@ -536,6 +678,26 @@ export default defineClientExtension(({ React, host }) => ({
       const [revision, setRevision] = React.useState(0)
       const refresh = React.useCallback(() => setRevision((value) => value + 1), [])
       const [job, setJob] = React.useState<ImportStatus | undefined>(undefined)
+      const [collect, setCollect] = React.useState<CollectStatus | undefined>(undefined)
+      const [configuring, setConfiguring] = React.useState(false)
+
+      // 收集队列在后台处理，入库数变化时刷新列表。
+      React.useEffect(() => {
+        let last = -1
+        const check = () =>
+          void host
+            .call('collect.status')
+            .then((value) => {
+              const next = record(value) as unknown as CollectStatus
+              setCollect(next)
+              if (last >= 0 && next.added !== last) refresh()
+              last = next.added
+            })
+            .catch(() => undefined)
+        check()
+        const timer = setInterval(check, 5000)
+        return () => clearInterval(timer)
+      }, [])
 
       // 导入在后台进行时，页面上显示进度，并随着进度刷新列表。
       React.useEffect(() => {
@@ -586,7 +748,11 @@ export default defineClientExtension(({ React, host }) => ({
 
       const header = h(PageHeader, {
         title: '表情包',
+        ...(collect !== undefined && collect.queued > 0 && !collect.waitingForModel
+          ? { meta: `正在整理 ${collect.queued} 张新收集的表情包` }
+          : {}),
         actions: [
+          h(Button, { key: 'collect', variant: 'ghost', onClick: () => setConfiguring(true) }, '收集设置'),
           job === undefined && overview !== undefined && overview.unlabeled > 0
             ? h(
                 Button,
@@ -613,7 +779,7 @@ export default defineClientExtension(({ React, host }) => ({
                 description: query
                   ? '换个关键词试试。'
                   : view === 'all'
-                    ? '智能体会在聊天中自动收集，也可以批量导入。'
+                    ? '群里大家常发的表情包会自动收进来，也可以批量导入。'
                     : undefined,
               })
             : h(
@@ -638,6 +804,16 @@ export default defineClientExtension(({ React, host }) => ({
         null,
         header,
         error === undefined ? null : h(InlineFeedback, { tone: 'error' }, `读取失败：${error}`),
+        collect?.waitingForModel === true
+          ? h(
+              InlineFeedback,
+              {
+                tone: 'warning',
+                action: h(Button, { size: 'small', onClick: () => setConfiguring(true) }, '选择模型'),
+              },
+              `有 ${collect.queued} 张表情包在排队，选择标注模型后开始整理入库。`,
+            )
+          : null,
         overview === undefined
           ? null
           : h(
@@ -711,6 +887,17 @@ export default defineClientExtension(({ React, host }) => ({
               onClose: () => setSelected(undefined),
               onChanged: refresh,
             }),
+        configuring
+          ? h(CollectDialog, {
+              status: collect,
+              onClose: () => setConfiguring(false),
+              onChanged: () =>
+                void host
+                  .call('collect.status')
+                  .then((value) => setCollect(record(value) as unknown as CollectStatus))
+                  .catch(() => undefined),
+            })
+          : null,
         importing === undefined
           ? null
           : h(ImportDialog, {
@@ -757,7 +944,7 @@ export default defineClientExtension(({ React, host }) => ({
             'aria-label': '本频道的收集方式',
             value: settings.collect,
             options: [
-              { value: 'auto', label: '由智能体判断是否公共' },
+              { value: 'auto', label: '自动判断是否公共' },
               { value: 'local', label: '全部仅限本频道' },
               { value: 'off', label: '不收集' },
             ],

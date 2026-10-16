@@ -1,5 +1,5 @@
 {
-  "summary": "让智能体用表情包表达情绪：在聊天中收集表情包，按语境挑一张发出。公共表情包跨频道共享，支持批量导入并由视觉模型自动标注。",
+  "summary": "让智能体用表情包表达情绪：自动收集群里常发的表情包，按语境挑一张发出。公共表情包跨频道共享，支持批量导入并由视觉模型自动标注。",
   "tags": ["表情包", "娱乐", "群聊", "图片", "页面"],
   "sourceUrl": "https://github.com/NekroAI/nekro-nxt-extensions/tree/main/extensions/stickers"
 }

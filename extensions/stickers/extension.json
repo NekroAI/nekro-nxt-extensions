@@ -2,10 +2,10 @@
   "id": "ext_7T93Z3095PRF7PRDP39TCREGC4",
   "slug": "stickers",
   "displayName": "Emotion 表情包",
-  "description": "让智能体用表情包表达情绪：在聊天中收集大家常用的表情包，回复时挑一张合适的发出。公共表情包在各个频道共享，已有的表情包可以批量导入。",
+  "description": "让智能体用表情包表达情绪：自动收集群里大家常发的表情包，回复时挑一张合适的发出。公共表情包在各个频道共享，已有的表情包可以批量导入。",
   "createdAt": 1791660757053,
   "requires": {
-    "sdk": 8
+    "sdk": 11
   },
   "clientCss": "assets/client.module.css",
   "permissions": {
@@ -59,7 +59,13 @@
           "kind": "static",
           "maxChars": 1600
         }
-      ]
+      ],
+      "inboundHook": {
+        "reads": "all",
+        "mayHide": false,
+        "mayForceTrigger": false,
+        "timeoutMs": 5000
+      }
     }
   },
   "config": {
@@ -94,7 +100,8 @@
             ],
             "meta": {
               "description": "收集策略",
-              "default": "auto"
+              "default": "auto",
+              "hint": "自动收集：群里被不同的人发过的表情包会自动收进库里；智能体也可以把图交来收藏。"
             }
           },
           "range": {
@@ -210,7 +217,7 @@
     {
       "kind": "tool",
       "name": "sticker_save",
-      "description": "收集当前频道中的一张表情包，记录用途、图中文字和是否公共"
+      "description": "把当前频道中的一张图交给表情包库收藏"
     },
     {
       "kind": "tool",
@@ -258,6 +265,10 @@
     {
       "kind": "rpc",
       "method": "library.settings"
+    },
+    {
+      "kind": "rpc",
+      "method": "collect.status"
     },
     {
       "kind": "rpc",
