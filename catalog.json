@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "repository": "NekroAI/nekro-nxt-extensions",
-  "version": 1,
+  "version": 2,
   "entries": [
     {
       "extensionId": "ext_01M4B6TAC9D0DXG4G4DYQB1XZA",
@@ -25,8 +25,8 @@
     },
     {
       "extensionId": "ext_01M4B6TAC9WQVDC9QEYWZB5QQY",
-      "state": "active",
-      "directory": "image-gen"
+      "state": "retired",
+      "reason": "早期用来验证扩展能力的示例，不再维护。"
     },
     {
       "extensionId": "ext_01M4B6TAC9TKX43QJA2YNZ6HHQ",
@@ -35,8 +35,8 @@
     },
     {
       "extensionId": "ext_01M4FESR04CMEEDWQZZ5T3CR18",
-      "state": "active",
-      "directory": "purchase-list"
+      "state": "retired",
+      "reason": "早期用来验证扩展能力的示例，不符合实际使用场景，不再维护。"
     },
     {
       "extensionId": "ext_01M4B6TAC9RERQ6JYMYNB1G761",
