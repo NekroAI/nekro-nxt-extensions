@@ -1,3 +1,4 @@
+import { setTimeout as realDelay } from 'node:timers/promises'
 import type { NxtFeed, NxtFeedItem, NxtFetchResponse } from '@nekro-nxt/extension-sdk'
 import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
@@ -481,13 +482,16 @@ describe('RSS 订阅', () => {
     const fetchesBefore = host.calls.filter((call) => call.kind === 'fetch').length
     const checking = host.call('check_feed_now')
     // 等手动检查真正发出请求（已持有频道锁）后再让周期任务到期，它应当跳过而不是排队。
+    // 之前要读写存储，那是真实的文件读写，假时钟推进不会等它；按真实时间等，否则周期任务会先跑并卡在假时钟上。
     for (
       let step = 0;
-      step < 50 && host.calls.filter((call) => call.kind === 'fetch').length === fetchesBefore;
+      step < 500 && host.calls.filter((call) => call.kind === 'fetch').length === fetchesBefore;
       step += 1
     ) {
       await vi.advanceTimersByTimeAsync(0)
+      await realDelay(10)
     }
+    expect(host.calls.filter((call) => call.kind === 'fetch').length).toBeGreaterThan(fetchesBefore)
     expect(await host.due(job)).toEqual({ wake: false })
     // 逐步推进时钟直到检查结束：慢机器上超时计时器可能晚于第一次推进才登记。
     let settled = false
@@ -500,7 +504,6 @@ describe('RSS 订阅', () => {
     resolveLate?.(respond('<rss/>'))
     await new Promise((resolve) => setTimeout(resolve, 20))
     expect(await savedState(host)).toEqual(afterTimeout)
-    // Up to 80 asynchronous clock steps; a busy CI runner needs more than the default 5 s for them.
   }, 15_000)
 
   it('shows the channel panel only the subscriptions of the agent and channel the host names', async () => {
