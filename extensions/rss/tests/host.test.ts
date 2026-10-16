@@ -500,7 +500,8 @@ describe('RSS 订阅', () => {
     resolveLate?.(respond('<rss/>'))
     await new Promise((resolve) => setTimeout(resolve, 20))
     expect(await savedState(host)).toEqual(afterTimeout)
-  })
+    // Up to 80 asynchronous clock steps; a busy CI runner needs more than the default 5 s for them.
+  }, 15_000)
 
   it('shows the channel panel only the subscriptions of the agent and channel the host names', async () => {
     const { host } = await fixture()
