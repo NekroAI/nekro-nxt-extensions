@@ -1,10 +1,11 @@
 {
-  "revisionNumber": 11,
-  "revisionId": "xrv_01M518BZ074VEGVBYW2RYHF4J4",
-  "payloadDigest": "0dd1269e8ca791aacdc2fe576fb7313547b1a5833dfc2be5c9db48fe35bb6bc3",
-  "createdAt": 1792117439500,
+  "revisionNumber": 12,
+  "revisionId": "xrv_01M5W9ZT20V29W5F7CGVFYH6DM",
+  "payloadDigest": "cd29fabfc8312d6bbfbf8f4b7e131c2ef72539b4773f8ad6a37784386c4e329f",
+  "createdAt": 1793025108039,
+  "notes": "修复标注模型返回错误 JSON 时表情包收集卡住、导致服务无响应的问题。",
   "lineage": {
-    "parent": "xrv_01M4N5K5EA2XB5RMMEV6VX8J8N",
-    "ancestry": ["xrv_01M4N5K5EA2XB5RMMEV6VX8J8N"]
+    "parent": "xrv_01M518BZ074VEGVBYW2RYHF4J4",
+    "ancestry": ["xrv_01M518BZ074VEGVBYW2RYHF4J4", "xrv_01M4N5K5EA2XB5RMMEV6VX8J8N"]
   }
 }

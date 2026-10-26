@@ -246,8 +246,13 @@ const collectPrompt = (item: CollectItem): string =>
 /** 回答里最后一个能解析的 JSON 对象；有的模型会先写一段思考或说明。 */
 const lastJsonObject = (reply: string): Record<string, unknown> | undefined => {
   const body = reply.replaceAll(/<think>[\s\S]*?<\/think>/gu, '')
-  for (let end = body.lastIndexOf('}'); end >= 0; end = body.lastIndexOf('}', end - 1)) {
-    for (let start = body.lastIndexOf('{', end); start >= 0; start = body.lastIndexOf('{', start - 1)) {
+  // lastIndexOf 会把负数位置当成 0；到达开头后直接结束，避免反复解析同一段。
+  for (let end = body.lastIndexOf('}'); end >= 0; end = end > 0 ? body.lastIndexOf('}', end - 1) : -1) {
+    for (
+      let start = body.lastIndexOf('{', end);
+      start >= 0;
+      start = start > 0 ? body.lastIndexOf('{', start - 1) : -1
+    ) {
       try {
         const parsed: unknown = JSON.parse(body.slice(start, end + 1))
         if (parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)) {

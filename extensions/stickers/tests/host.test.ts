@@ -1,4 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { execFile } from 'node:child_process'
+import { promisify } from 'node:util'
 import type { NxtModelRequest } from '@nekro-nxt/extension-sdk'
 import extension from '../src/host.js'
 import { createTestHost } from '../../../tools/testing.js'
@@ -88,6 +90,45 @@ afterEach(() => {
 })
 
 describe('收藏与跨群使用', () => {
+  it('回答开头的错误 JSON 会结束处理，后续图片仍能收藏', async () => {
+    // 在子进程中验证：同步死循环也能被超时终止，不会卡住整个测试进程。
+    const script = `
+      import assert from 'node:assert/strict'
+      import { setTimeout } from 'node:timers/promises'
+      import extension from ${JSON.stringify(new URL('../src/host.ts', import.meta.url).href)}
+      import { createTestHost } from ${JSON.stringify(new URL('../../../tools/testing.ts', import.meta.url).href)}
+      const model = ${JSON.stringify(vision)}
+      const valid = ${JSON.stringify(reply())}
+      for (const invalid of ['{"meaning": invalid}', '} invalid']) {
+        let answer = invalid
+        const host = await createTestHost(extension, { models: [model], modelReply: () => answer })
+        await host.rpc('library.settings', { model: model.ref })
+        host.useChannel(${JSON.stringify(ROOM_A)})
+        const save = async (assetId) => {
+          host.addPicture(assetId, { channels: [${JSON.stringify(ROOM_A.id)}] })
+          await host.call('sticker_save', { assetId })
+          for (;;) {
+            const status = await host.rpc('collect.status')
+            if (status.queued === 0 && status.working === 0) return status
+            await setTimeout(5)
+          }
+        }
+        const failed = await save('ast_INVALID')
+        assert.equal(failed.failed, 1)
+        assert.match(failed.errors[0], /模型没有按格式回答/)
+        answer = valid
+        await save('ast_VALID')
+        const result = await host.rpc('library.list', { view: 'all' })
+        assert.equal(result.total, 1)
+        assert.equal(result.items[0].id, 'ast_VALID')
+      }
+    `
+    await promisify(execFile)(process.execPath, ['--import', 'tsx', '--input-type=module', '--eval', script], {
+      cwd: new URL('../../../', import.meta.url),
+      timeout: 5000,
+    })
+  }, 8000)
+
   it('在甲群收藏的通用表情包，乙群也能搜到、看到并发出去', async () => {
     const host = await setup()
     host.addPicture('ast_CRY', { channels: [ROOM_A.id] })
