@@ -134,7 +134,7 @@ describe('收藏与跨群使用', () => {
     host.addPicture('ast_CRY', { channels: [ROOM_A.id] })
     host.useChannel(ROOM_A)
     const saved = await save(host, 'ast_CRY')
-    expect(saved.text).toBe('已加入收藏队列。')
+    expect(saved.text).toContain('已加入收藏队列。')
     expect(host.library.has('ast_CRY')).toBe(true)
     expect((await list(host)).items).toMatchObject([{ id: 'ast_CRY', scope: 'public', origin: 'chat' }])
 
@@ -233,7 +233,8 @@ describe('自动收集', () => {
     expect((await list(host)).items).toMatchObject([
       { id: 'ast_LOL', origin: 'chat', scope: 'public', sources: [ROOM_A.id], collector: 'agt_TEST' },
     ])
-    expect(promptOf(host.modelCalls[0]!)).toContain('被不同的人发过')
+    expect(promptOf(host.modelCalls[0]!)).not.toContain('被不同的人发过')
+    expect(promptOf(host.modelCalls[0]!)).not.toContain('交来收藏')
     expect(host.library.has('ast_SOLO')).toBe(false)
   })
 
@@ -255,7 +256,7 @@ describe('自动收集', () => {
     await post(host, 'ast_WAIT', 'mbr_BOB')
     expect(await host.rpc('collect.status')).toMatchObject({ queued: 1, waitingForModel: true })
     expect((await host.call('sticker_save', { assetId: 'ast_WAIT' })).text).toBe(
-      '已加入收藏队列，管理员选好标注模型后入库。',
+      '已加入收藏队列，管理员选好标注模型后判断入库。',
     )
     expect(await host.rpc('collect.status')).toMatchObject({ queued: 1 })
     expect(host.modelCalls).toHaveLength(0)
@@ -299,17 +300,64 @@ describe('自动收集', () => {
     expect(await host.rpc('collect.status')).toMatchObject({ queued: 0, rejected: 2 })
   })
 
-  it('模型判断不是表情包的不收；智能体交来的照样收下，但仅限来源频道', async () => {
-    const screenshot = reply({ sticker: false, shareable: false, meaning: '聊天截图' })
+  it('模型判断不是表情包的不收，智能体交来的也一样，原因随下一条唤醒它的消息告诉它', async () => {
+    const screenshot = reply({ sticker: false, shareable: false, meaning: '监控面板截图', description: '服务监控面板' })
     const host = await setup({}, { ast_SHOT: screenshot, ast_ASKED: screenshot })
     host.useChannel(ROOM_A)
     host.addPicture('ast_SHOT', { channels: [ROOM_A.id] })
     host.addPicture('ast_ASKED', { channels: [ROOM_A.id] })
     await post(host, 'ast_SHOT', 'mbr_ALICE')
     await post(host, 'ast_SHOT', 'mbr_BOB')
-    await save(host, 'ast_ASKED')
-    expect((await list(host)).items).toMatchObject([{ id: 'ast_ASKED', scope: 'local' }])
-    expect(host.library.has('ast_SHOT')).toBe(false)
+    const saved = await save(host, 'ast_ASKED')
+    expect(saved.text).toContain('之后会告诉你原因')
+    expect(promptOf(host.modelCalls.find((request) => imageOf(request) === 'ast_ASKED')!)).toContain(
+      '智能体在群聊里把这张图交来收藏',
+    )
+    expect(host.library.size).toBe(0)
+    expect(await host.rpc('collect.status')).toMatchObject({ rejected: 2 })
+
+    // 别的频道的消息不带这条说明；回到原频道，下一条唤醒智能体的消息附上，只附一次。
+    host.useChannel(ROOM_B)
+    expect(await host.inbound({ text: '在吗', wouldTrigger: true })).toBeUndefined()
+    host.useChannel(ROOM_A)
+    expect(await host.inbound({ text: '随便聊聊', wouldTrigger: false })).toBeUndefined()
+    expect(await host.inbound({ text: '收了吗', wouldTrigger: true })).toEqual({
+      annotation: '之前交来收藏的那张图（服务监控面板）看起来不像表情包，没有收进库。',
+    })
+    expect(await host.inbound({ text: '收了吗', wouldTrigger: true })).toBeUndefined()
+  })
+
+  it('智能体交来的长图、照片尺寸的图同样按规则不收，当场说明原因', async () => {
+    const host = await setup()
+    host.useChannel(ROOM_A)
+    host.addPicture('ast_LONG', { channels: [ROOM_A.id], info: { width: 400, height: 2000 } })
+    host.addPicture('ast_PHOTO', { channels: [ROOM_A.id], info: { width: 4000, height: 3000 } })
+    expect((await save(host, 'ast_LONG')).text).toBe('这张图是长图，不像表情包，没有收进库。')
+    expect((await save(host, 'ast_PHOTO')).text).toBe('这张图尺寸像照片或截图，不像表情包，没有收进库。')
+    expect(host.modelCalls).toHaveLength(0)
+    expect(host.library.size).toBe(0)
+  })
+
+  it('标注提示词按画面判断，列出截图、立绘和不宜公共的内容', async () => {
+    const host = await setup()
+    host.useChannel(ROOM_A)
+    host.addPicture('ast_ANY', { channels: [ROOM_A.id] })
+    await save(host, 'ast_ANY')
+    const prompt = promptOf(host.modelCalls[0]!)
+    for (const phrase of [
+      '视频截图',
+      '游戏画面',
+      '全身立绘',
+      '不要替它编一个用途',
+      '密钥或令牌',
+      '金额或账单',
+      '性暗示',
+    ]) {
+      expect(prompt).toContain(phrase)
+    }
+    expect(prompt).toContain(
+      '{"sticker":是表情包为 true，否则为 false,"shareable":能带到别的群用为 true，否则为 false,"meaning":',
+    )
   })
 
   it('智能体自己发的图和设置为不收集的频道不计数', async () => {
@@ -578,7 +626,7 @@ describe('整理与回收站', () => {
     expect((await host.call('sticker_search', { query: '撒娇' })).value).toMatchObject({ items: [{ id: 'ast_A' }] })
   })
 
-  it('回收站里的图不会被自动收集带回来', async () => {
+  it('回收站里的图不会被自动收集或智能体收藏带回来', async () => {
     const host = await setup()
     host.addPicture('ast_GONE', { channels: [ROOM_A.id] })
     host.useChannel(ROOM_A)
@@ -587,6 +635,7 @@ describe('整理与回收站', () => {
     await post(host, 'ast_GONE', 'mbr_ALICE')
     await post(host, 'ast_GONE', 'mbr_BOB')
     await settled(host)
+    expect((await save(host, 'ast_GONE')).text).toContain('回收站')
     expect(await host.rpc('library.overview')).toMatchObject({ total: 0, trash: 1 })
   })
 
@@ -768,5 +817,121 @@ describe('批量导入', () => {
       items: [{ id: 'ast_NAMED', description: '开心 转圈' }],
     })
     expect(await host.rpc('import.cancel')).toEqual({ ok: true })
+  })
+})
+
+describe('重新复核', () => {
+  /** 库里有五张图：四张公共、一张仅限来源频道，其中一张在回收站；`replies` 之后可以改成复核时的回答。 */
+  const stocked = async (options: Parameters<typeof setup>[0] = {}) => {
+    const replies: Record<string, string> = {}
+    const host = await setup(options, replies)
+    host.useChannel(ROOM_A)
+    for (const [id, dhash] of [
+      ['ast_CAT', '0000000000000000'],
+      ['ast_LOGS', 'ffffffffffffffff'],
+      ['ast_BILL', '00000000ffffffff'],
+      ['ast_LOCAL', '0f0f0f0f0f0f0f0f'],
+      ['ast_TRASHED', 'f0f0f0f0f0f0f0f0'],
+    ] as const) {
+      host.addPicture(id, { channels: [ROOM_A.id], info: { dhash } })
+      await save(host, id)
+    }
+    await host.call('sticker_update', { id: 'ast_LOCAL', scope: 'local' })
+    await host.call('sticker_remove', { id: 'ast_TRASHED' })
+    host.modelCalls.length = 0
+    return { host, replies }
+  }
+  const reviewed = (host: Host) =>
+    vi.waitFor(async () =>
+      expect((await host.rpc('review.status')) as { state: string }).toMatchObject({ state: 'done' }),
+    )
+  const byId = async (host: Host, view = 'all') =>
+    Object.fromEntries(
+      ((await host.rpc('library.list', { view })) as { items: { id: string }[] }).items.map((item) => [item.id, item]),
+    ) as Record<string, Record<string, unknown>>
+
+  it('不是表情包的移入回收站，不宜公共的改为仅限来源频道，文字按新判断更新，不放开仅限来源频道的', async () => {
+    const { host, replies } = await stocked()
+    Object.assign(replies, {
+      ast_CAT: reply({ meaning: '表达得意，适合被夸的时候', caption: '', description: '小猫叉腰', tags: ['得意'] }),
+      ast_LOGS: reply({ sticker: false, shareable: false, description: '日志截图' }),
+      ast_BILL: reply({ shareable: false, meaning: '表达心疼钱', description: '账单图表' }),
+      ast_LOCAL: reply({ shareable: true, meaning: '表达无语' }),
+    })
+    expect(await host.rpc('review.start', { model: 'fixture:vision' })).toMatchObject({
+      ok: true,
+      job: { total: 4, state: 'running' },
+    })
+    await reviewed(host)
+    expect(await host.rpc('review.status')).toMatchObject({
+      total: 4,
+      done: 4,
+      removed: 1,
+      localized: 1,
+      failed: 0,
+    })
+    expect(host.modelCalls.map(imageOf).sort()).toEqual(['ast_BILL', 'ast_CAT', 'ast_LOCAL', 'ast_LOGS'])
+    expect(promptOf(host.modelCalls[0]!)).not.toContain('交来收藏')
+
+    const live = await byId(host)
+    expect(live['ast_CAT']).toMatchObject({
+      scope: 'public',
+      meaning: '表达得意，适合被夸的时候',
+      caption: '',
+      description: '小猫叉腰',
+      tags: ['得意'],
+    })
+    expect(live['ast_BILL']).toMatchObject({ scope: 'local', meaning: '表达心疼钱' })
+    expect(live['ast_LOCAL']).toMatchObject({ scope: 'local', meaning: '表达无语' })
+    expect(live['ast_LOGS']).toBeUndefined()
+    expect(Object.keys(await byId(host, 'trash')).sort()).toEqual(['ast_LOGS', 'ast_TRASHED'])
+    host.useChannel(ROOM_B)
+    expect((await host.call('sticker_search', { query: '心疼钱' })).value).toEqual({ ok: true, items: [] })
+  })
+
+  it('进度存在本机存储里，可以停止；停止后回来的判断不再写入', async () => {
+    let release: () => void = () => undefined
+    const gate = new Promise<void>((resolve) => (release = resolve))
+    let reviewing = false
+    const { host } = await stocked({
+      modelReply: async () => {
+        if (!reviewing) return reply()
+        await gate
+        return reply({ sticker: false })
+      },
+    })
+    await host.rpc('library.settings', { concurrency: 1 })
+    reviewing = true
+    await host.rpc('review.start', { model: 'fixture:vision' })
+    await vi.waitFor(() => expect(host.modelCalls).toHaveLength(1))
+    const saved = (await host.hostNxt.storage.get('review')) as { queue: string[]; state: string }
+    expect(saved).toMatchObject({ state: 'running' })
+    expect(saved.queue).toHaveLength(4)
+    expect(await host.rpc('review.start', { model: 'fixture:vision' })).toMatchObject({ ok: false })
+
+    expect(await host.rpc('review.cancel')).toEqual({ ok: true })
+    release()
+    await vi.waitFor(async () => expect(await host.rpc('collect.status')).toMatchObject({ working: 0 }))
+    expect(await host.rpc('review.status')).toMatchObject({ state: 'cancelled', done: 0, removed: 0 })
+    expect(await host.rpc('library.overview')).toMatchObject({ total: 4, trash: 1 })
+    expect(host.modelCalls).toHaveLength(1)
+  })
+
+  it('标注失败的保持原样并记下原因，模型要选可用的视觉模型', async () => {
+    const { host, replies } = await stocked()
+    expect(await host.rpc('review.start', {})).toMatchObject({ ok: false })
+    expect(await host.rpc('review.start', { model: 'fixture:text' })).toMatchObject({ ok: false })
+    for (const id of ['ast_CAT', 'ast_LOGS', 'ast_BILL', 'ast_LOCAL']) replies[id] = 'not json'
+    await host.rpc('review.start', { model: 'fixture:vision' })
+    await reviewed(host)
+    expect(await host.rpc('review.status')).toMatchObject({
+      done: 4,
+      failed: 4,
+      removed: 0,
+    })
+    expect((await host.rpc('review.status')) as { errors: string[] }).toMatchObject({
+      errors: expect.arrayContaining([expect.stringContaining('模型没有按格式回答')]),
+    })
+    expect(await host.rpc('library.overview')).toMatchObject({ total: 4, public: 3, local: 1 })
   })
 })

@@ -288,6 +288,18 @@
     },
     {
       "kind": "rpc",
+      "method": "review.start"
+    },
+    {
+      "kind": "rpc",
+      "method": "review.status"
+    },
+    {
+      "kind": "rpc",
+      "method": "review.cancel"
+    },
+    {
+      "kind": "rpc",
       "method": "channel.get"
     },
     {

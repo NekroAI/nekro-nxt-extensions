@@ -1,11 +1,11 @@
 {
-  "revisionNumber": 12,
-  "revisionId": "xrv_01M5W9ZT20V29W5F7CGVFYH6DM",
-  "payloadDigest": "cd29fabfc8312d6bbfbf8f4b7e131c2ef72539b4773f8ad6a37784386c4e329f",
-  "createdAt": 1793025108039,
-  "notes": "修复标注模型返回错误 JSON 时表情包收集卡住、导致服务无响应的问题。",
+  "revisionNumber": 13,
+  "revisionId": "xrv_01M63028TF9B7FKNRAZZ2RSSEJ",
+  "payloadDigest": "940f2c02e47b5458dd04850fc72dabe4365055cad0649fbc58103816c91c1aed",
+  "createdAt": 1793249583959,
+  "notes": "收集更严格：截图、照片、游戏和视频画面、没有表情的立绘不再收进库，智能体交来的也按同样标准判断并告诉它原因；含密钥、账单、管理后台或性暗示的图仅限来源频道。管理页新增「重新复核」，按新标准整理已有的库。",
   "lineage": {
-    "parent": "xrv_01M518BZ074VEGVBYW2RYHF4J4",
-    "ancestry": ["xrv_01M518BZ074VEGVBYW2RYHF4J4", "xrv_01M4N5K5EA2XB5RMMEV6VX8J8N"]
+    "parent": "xrv_01M5W9ZT20V29W5F7CGVFYH6DM",
+    "ancestry": ["xrv_01M5W9ZT20V29W5F7CGVFYH6DM", "xrv_01M518BZ074VEGVBYW2RYHF4J4", "xrv_01M4N5K5EA2XB5RMMEV6VX8J8N"]
   }
 }

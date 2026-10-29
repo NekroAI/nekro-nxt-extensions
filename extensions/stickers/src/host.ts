@@ -15,7 +15,9 @@ import {
  * 示范要点：
  * - 收集不占智能体的回合：入站处理函数（`harness.onInbound`）记下每张图被哪些人发过，达到门槛后收进资源库、排进收集队列；
  * - 收集队列在本机实例里按页面设置的并行数处理：先按固定规则过滤，再用页面选择的标注模型（本机层 `models`）写用途与配文、判断能否公共；
- * - 智能体收藏只交一个图片编号，同样进收集队列；使用时搜索结果附上候选图，智能体确认后再发，并顺手修正、收紧或清理；
+ * - 智能体收藏只交一个图片编号，同样进收集队列、按同样的标准判断；没收进库时，原因随这个频道下一条唤醒智能体的消息附注给它；
+ * - 使用时搜索结果附上候选图，智能体确认后再发，并顺手修正、收紧或清理；
+ * - 管理员可以在页面上重新复核整个库：后台逐张重新判断，进度存在本机存储里，重启后接着做；
  * - 使用提示随消息附注（annotation）给出，按使用频率在一个随机区间里出现，不改系统提示；
  * - 本机实例持有记录与候选的内存副本，所有读改写经同一个队列，避免并发写丢失。
  */
@@ -29,6 +31,10 @@ const SETTINGS_KEY = 'settings'
 const IMPORT_KEY = 'import'
 const QUEUE_KEY = 'queue'
 const COLLECT_KEY = 'collect'
+const REVIEW_KEY = 'review'
+const NOTICE_KEY = 'notices'
+/** 每个智能体在每个频道最多攒几条没收进库的说明，超过一天没送到就不再送。 */
+const NOTICE_LIMIT = 3
 const TRASH_DAYS = 30
 const CANDIDATE_DAYS = 30
 const DAY = 24 * 60 * 60 * 1000
@@ -107,6 +113,8 @@ interface CollectItem {
   readonly note?: string
   readonly collector?: string
   readonly collectorName?: string
+  /** 交来这张图的智能体和频道；没收进库时把原因告诉它。 */
+  readonly askedBy?: { readonly agent: string; readonly channel: string }
   readonly addedAt: number
 }
 
@@ -143,6 +151,27 @@ interface ImportJob {
   readonly skipped: number
   readonly failed: number
   readonly errors: readonly string[]
+}
+
+/** 重新复核整个库：按当前的标注标准逐张重新判断。 */
+interface ReviewJob {
+  readonly state: 'running' | 'done' | 'cancelled'
+  readonly model: string
+  /** 还没复核的表情包编号。 */
+  readonly queue: readonly string[]
+  readonly total: number
+  /** 已处理的张数，含失败和期间被删掉的。 */
+  readonly done: number
+  readonly removed: number
+  readonly localized: number
+  readonly failed: number
+  readonly errors: readonly string[]
+}
+
+/** 没收进库的说明，等这个频道下一条唤醒智能体的消息时附注给它。 */
+interface Notice {
+  readonly lines: readonly string[]
+  readonly at: number
 }
 
 type Failure = { readonly ok: false; readonly message: string }
@@ -208,35 +237,40 @@ const isAvailable = (
 }
 
 /**
- * 固定规则：不调用模型就能排除的图，返回原因。智能体交来的图只查格式和大小，长图、截图也按它的意思收下，
- * 由标注模型决定能否公共。
+ * 固定规则：不调用模型就能排除的图，返回原因（接在「这张图」后面）。自动收集和智能体交来的图用同一套规则：
+ * 长图、照片尺寸的大图几乎都是截图或照片。
  */
-const pictureProblem = (info: NxtImageInfo, requested: boolean): string | undefined => {
+const pictureProblem = (info: NxtImageInfo): string | undefined => {
   if (!PICTURE_TYPES.has(info.mediaType)) return '不是 PNG、JPEG、GIF 或 WebP 图片'
   if (info.byteSize > MAX_BYTES) return '超过 8 MB'
-  if (requested) return undefined
   const long = Math.max(info.width, info.height)
   const short = Math.min(info.width, info.height)
-  if (short < MIN_SIDE) return '图片太小'
-  if (long / short > MAX_RATIO) return '是长图'
-  if (long > MAX_SIDE && info.frames === 1) return '尺寸像照片或截图'
+  if (short < MIN_SIDE) return '太小'
+  if (long / short > MAX_RATIO) return '是长图，不像表情包'
+  if (long > MAX_SIDE && info.frames === 1) return '尺寸像照片或截图，不像表情包'
   return undefined
 }
 
 const LABEL_PROMPT = [
-  '这是一张准备收进表情包库的图片。只输出一个 JSON 对象，不要输出别的内容，字段按下面的顺序：',
-  '{"sticker":表情包或反应图为 true，截图、照片、聊天记录、长图为 false,',
-  '"shareable":图里有聊天记录、群名、昵称、账号、真实照片或个人信息时为 false，否则为 true,',
-  '"meaning":"这张图在聊天里表达什么、适合在什么情况下发，一到两句，写用途不写外观",',
-  '"caption":"图里文字的原文，最多 50 字，没有就是空字符串","description":"一句话描述画面",',
-  '"tags":["2 到 5 个短标签"]}',
-].join('')
+  '这张图片可能会收进表情包库，智能体在群聊里想表达情绪或回应时从库里挑图发出。请判断它是不是表情包、能不能带到别的群用，并写下用途。',
+  '表情包靠人物或角色的表情、动作、姿势，或者图里的文字，传达一种情绪或反应；没有文字也算。软件或系统界面、后台和数据面板、账单、日志、网页和文章的截图，视频截图，游戏画面，照片，聊天记录，长图，都不是表情包。画面里没有东西在传达情绪或用途的也不是，比如普通的角色全身立绘、风景图；这时不要替它编一个用途。',
+  '带到别的群用，意味着库里的图会出现在陌生人面前。图里有聊天记录、群名、昵称、账号或账号的一部分、密钥或令牌、金额或账单、内部系统或管理后台的界面、真实照片或其他个人信息，或者人物带有性暗示、衣着暴露时，不能带到别的群。',
+  '用途按画面里实际看得到的写：表情、动作或文字表达了什么，就写什么。',
+  [
+    '只输出一个 JSON 对象，不要输出别的内容，字段按下面的顺序：',
+    '{"sticker":是表情包为 true，否则为 false,',
+    '"shareable":能带到别的群用为 true，否则为 false,',
+    '"meaning":"这张图在聊天里表达什么、适合在什么情况下发，一到两句，写用途不写外观",',
+    '"caption":"图里文字的原文，最多 50 字，没有就是空字符串","description":"一句话描述画面",',
+    '"tags":["2 到 5 个短标签"]}',
+  ].join(''),
+].join('\n')
 
 /** 收集来的图附上来历，帮模型判断；平台标记只作参考。 */
 const collectPrompt = (item: CollectItem): string =>
   [
     LABEL_PROMPT,
-    item.requested ? '智能体在群聊里把这张图交来收藏。' : '这张图在群聊里被不同的人发过。',
+    item.requested ? '智能体在群聊里把这张图交来收藏。' : '',
     item.hint ? '平台把它标为表情包，仅供参考。' : '',
     item.note ? `智能体的备注：${item.note}` : '',
   ]
@@ -333,9 +367,9 @@ const GUIDE = (collect: 'auto' | 'asked' | 'off', frequency: Frequency): string 
     '发表情包：想用一张图表达情绪或回应时，先用 sticker_search 按想表达的意思找，比如「被夸了有点得意」；从候选里挑一张，用 sticker_use 取得 assetId，再用 send_channel_message 的 image 块发出去。都不合适就不发。',
     FREQUENCY[frequency],
     collect === 'auto'
-      ? '收藏：群里大家常发的表情包会自动收进库里。看到值得收藏的，或者有人请你收藏某张图，用 sticker_save 把图片编号交过去就行，用途和能否带到别的群由表情包库判断。'
+      ? '收藏：群里大家常发的表情包会自动收进库里。看到值得收藏的，或者有人请你收藏某张图，用 sticker_save 把图片编号交过去就行，是不是表情包、用途和能否带到别的群由表情包库判断。'
       : collect === 'asked'
-        ? '收藏：有人请你收藏某张图时，用 sticker_save 把图片编号交过去就行，用途和能否带到别的群由表情包库判断。'
+        ? '收藏：有人请你收藏某张图时，用 sticker_save 把图片编号交过去就行，是不是表情包、用途和能否带到别的群由表情包库判断。'
         : '',
     '整理：搜索结果里描述不对的，用 sticker_update 改；发现不该带到别的群的，用 sticker_update 把 scope 改成 local；根本不是表情包的，用 sticker_remove。有人说别再发某张，或别把它带到别的群，也照做。',
     '表情包的编号只在工具里用，不要在聊天里说出来。',
@@ -480,6 +514,7 @@ export default defineHostExtension(async ({ harness, nxt: host }) => {
                   requested: entry.requested || item.requested,
                   hint: entry.hint || item.hint,
                   ...(entry.note || !item.note ? {} : { note: item.note }),
+                  ...(entry.askedBy || !item.askedBy ? {} : { askedBy: item.askedBy }),
                   ...(entry.collectorName || !item.collectorName
                     ? {}
                     : { collector: item.collector, collectorName: item.collectorName }),
@@ -605,11 +640,42 @@ export default defineHostExtension(async ({ harness, nxt: host }) => {
     return outcome
   }
 
+  // ---------- 没收进库的说明 ----------
+  // 收藏在后台判断，工具早已返回；说明先记下，等这个频道下一条唤醒智能体的消息时附注给它。
+  let loadedNotices: Promise<Map<string, Notice>> | undefined
+  const notices = (): Promise<Map<string, Notice>> =>
+    (loadedNotices ??= host.storage
+      .get(NOTICE_KEY)
+      .then((saved) => new Map(Object.entries(record(saved)) as [string, Notice][])))
+  const writeNotices = async (all: Map<string, Notice>) =>
+    host.storage.set(NOTICE_KEY, Object.fromEntries(all) as unknown as ExtensionJsonValue)
+  const noticeKey = (agent: string, channel: string) => `${agent}/${channel}`
+  /** 调用方在 serial 里。 */
+  const addNotice = async (askedBy: NonNullable<CollectItem['askedBy']>, line: string) => {
+    const all = await notices()
+    const now = Date.now()
+    for (const [key, notice] of all) if (now - notice.at >= DAY) all.delete(key)
+    const key = noticeKey(askedBy.agent, askedBy.channel)
+    all.set(key, { lines: [...(all.get(key)?.lines ?? []), line].slice(-NOTICE_LIMIT), at: now })
+    await writeNotices(all)
+  }
+  const takeNotice = (agent: string, channel: string) =>
+    serial(async (): Promise<string | undefined> => {
+      const all = await notices()
+      const key = noticeKey(agent, channel)
+      const notice = all.get(key)
+      if (notice === undefined) return undefined
+      all.delete(key)
+      await writeNotices(all)
+      return Date.now() - notice.at < DAY ? notice.lines.join('\n') : undefined
+    })
+
   // ---------- 收集队列 ----------
-  /** 判断为不收：记下来，30 天内再出现不再判断，图片移出资源库。 */
-  const reject = (item: CollectItem) =>
+  /** 判断为不收：记下来，30 天内再出现不再判断，图片移出资源库；智能体交来的告诉它原因。 */
+  const reject = (item: CollectItem, reason: string) =>
     serial(async () => {
       const now = Date.now()
+      if (item.askedBy !== undefined) await addNotice(item.askedBy, `之前交来收藏的那张图${reason}，没有收进库。`)
       const candidate = (await candidates()).get(item.assetId)
       await putCandidate({
         id: item.assetId,
@@ -626,8 +692,9 @@ export default defineHostExtension(async ({ harness, nxt: host }) => {
   /** 处理一张：固定规则 → 已在库里就合并来源 → 标注模型判断与标注 → 入库或不收。 */
   const collectOne = async (item: CollectItem, model: string): Promise<'added' | 'merged' | 'rejected'> => {
     const info = await host.image.info(item.assetId)
-    if (pictureProblem(info, item.requested) !== undefined) {
-      await reject(item)
+    const problem = pictureProblem(info)
+    if (problem !== undefined) {
+      await reject(item, problem)
       return 'rejected'
     }
     const merged = await serial(async () => {
@@ -645,9 +712,8 @@ export default defineHostExtension(async ({ harness, nxt: host }) => {
     if (merged) return 'merged'
 
     const result = await label(item.assetId, model, collectPrompt(item))
-    // 智能体交来的图即使不像表情包也收下，只是仅限来源频道。
-    if (!result.sticker && !item.requested) {
-      await reject(item)
+    if (!result.sticker) {
+      await reject(item, `${result.description ? `（${result.description}）` : ''}看起来不像表情包`)
       return 'rejected'
     }
     const modes = await Promise.all(item.channels.map(async (channel) => (await readChannel(channel)).collect))
@@ -680,7 +746,70 @@ export default defineHostExtension(async ({ harness, nxt: host }) => {
     })
   }
 
-  // ---------- 工作池：导入任务与收集队列共用并行数 ----------
+  // ---------- 重新复核 ----------
+  const readReview = async (): Promise<ReviewJob | undefined> => {
+    const saved = record(await host.storage.get(REVIEW_KEY))
+    return typeof saved['state'] === 'string' ? (saved as unknown as ReviewJob) : undefined
+  }
+  const writeReview = (job: ReviewJob) => host.storage.set(REVIEW_KEY, job as unknown as ExtensionJsonValue)
+
+  /**
+   * 按当前标准重新判断一张：不是表情包的移进回收站，不宜公共的改为仅限来源频道，用途和配文按新的判断更新；
+   * 仅限来源频道的不会因此放开。复核停止后回来的判断不再写入。
+   */
+  const reviewOne = async (id: string, model: string): Promise<'checked' | 'removed' | 'localized' | 'skipped'> => {
+    const before = (await stickers()).get(id)
+    if (before === undefined || before.deletedAt !== undefined) return 'skipped'
+    const result = await label(id, model, LABEL_PROMPT)
+    return serial(async () => {
+      if ((await readReview())?.state !== 'running') return 'skipped' as const
+      const sticker = (await stickers()).get(id)
+      if (sticker === undefined || sticker.deletedAt !== undefined) return 'skipped' as const
+      const now = Date.now()
+      if (!result.sticker) {
+        await put({ ...sticker, deletedAt: now })
+        return 'removed' as const
+      }
+      const tighten = !result.shareable && sticker.scope === 'public'
+      const { unjudged: _unjudged, ...judged } = sticker
+      await put({
+        ...(tighten ? judged : sticker),
+        ...(result.meaning ? { meaning: result.meaning } : {}),
+        caption: result.caption,
+        ...(result.description ? { description: result.description } : {}),
+        ...(result.tags.length > 0 ? { tags: result.tags } : {}),
+        ...(tighten ? { scope: 'local' as const } : {}),
+        updatedAt: now,
+      })
+      return tighten ? ('localized' as const) : ('checked' as const)
+    })
+  }
+
+  const finishReview = (
+    key: string,
+    id: string,
+    outcome: PromiseSettledResult<'checked' | 'removed' | 'localized' | 'skipped'>,
+  ) =>
+    serial(async () => {
+      const latest = await readReview()
+      if (latest?.state !== 'running') return
+      const remaining = latest.queue.filter((entry) => entry !== id)
+      const othersRunning = [...working].some((entry) => entry.startsWith('review:') && entry !== key)
+      const value = outcome.status === 'fulfilled' ? outcome.value : undefined
+      await writeReview({
+        ...latest,
+        state: remaining.length === 0 && !othersRunning ? 'done' : 'running',
+        queue: remaining,
+        done: latest.done + 1,
+        removed: latest.removed + (value === 'removed' ? 1 : 0),
+        localized: latest.localized + (value === 'localized' ? 1 : 0),
+        failed: latest.failed + (outcome.status === 'rejected' ? 1 : 0),
+        errors:
+          outcome.status === 'rejected' ? [...latest.errors, errorText(outcome.reason)].slice(-10) : latest.errors,
+      })
+    })
+
+  // ---------- 工作池：导入、收集与复核共用并行数 ----------
   const working = new Set<string>()
   let filling: Promise<void> = Promise.resolve()
 
@@ -728,7 +857,7 @@ export default defineHostExtension(async ({ harness, nxt: host }) => {
       })
     })
 
-  /** 下一件可以开始的事：先做导入任务，再做收集队列（选了标注模型才做）。 */
+  /** 下一件可以开始的事：先做导入任务，再做收集队列（选了标注模型才做），最后做复核。 */
   const nextWork = async (settings: Settings): Promise<{ key: string; run: () => Promise<void> } | undefined> => {
     const job = await readImport()
     if (job?.state === 'running') {
@@ -752,14 +881,35 @@ export default defineHostExtension(async ({ harness, nxt: host }) => {
       }
     }
     const model = settings.model
-    if (model === undefined) return undefined
-    const item = (await readQueue()).find((entry) => !working.has(`collect:${entry.assetId}`))
-    if (item === undefined) return undefined
+    const item =
+      model === undefined ? undefined : (await readQueue()).find((entry) => !working.has(`collect:${entry.assetId}`))
+    if (item !== undefined && model !== undefined) {
+      return {
+        key: `collect:${item.assetId}`,
+        run: async () => {
+          const [outcome] = await Promise.allSettled([collectOne(item, model)])
+          await finishCollect(item, outcome!)
+        },
+      }
+    }
+    const review = await readReview()
+    if (review?.state !== 'running') return undefined
+    const id = review.queue.find((entry) => !working.has(`review:${entry}`))
+    if (id === undefined) {
+      if (review.queue.length === 0 && ![...working].some((entry) => entry.startsWith('review:'))) {
+        await serial(async () => {
+          const latest = await readReview()
+          if (latest?.state === 'running' && latest.queue.length === 0) await writeReview({ ...latest, state: 'done' })
+        })
+      }
+      return undefined
+    }
+    const key = `review:${id}`
     return {
-      key: `collect:${item.assetId}`,
+      key,
       run: async () => {
-        const [outcome] = await Promise.allSettled([collectOne(item, model)])
-        await finishCollect(item, outcome!)
+        const [outcome] = await Promise.allSettled([reviewOne(id, review.model)])
+        await finishReview(key, id, outcome!)
       },
     }
   }
@@ -885,7 +1035,11 @@ export default defineHostExtension(async ({ harness, nxt: host }) => {
         ? (config['frequency'] as Frequency)
         : 'smart'
     const tip = await tipFor(channelId, frequency)
-    return tip === undefined ? undefined : { annotation: tip }
+    // 只有攒着说明时才查是哪个智能体，平时不多一次调用。
+    const notice =
+      (await notices()).size === 0 ? undefined : await takeNotice((await nxt.context.current()).agent.id, channelId)
+    const annotation = [notice, tip].filter(Boolean).join('\n')
+    return annotation ? { annotation: annotation.slice(0, 500) } : undefined
   })
 
   // ---------- 页面与面板的界面数据接口 ----------
@@ -1070,6 +1224,49 @@ export default defineHostExtension(async ({ harness, nxt: host }) => {
     }),
   )
 
+  harness.handle('review.start', async (input) => {
+    const started = await serial(async () => {
+      const current = await readReview()
+      if (current?.state === 'running') return fail('复核还在进行，请等它完成或先停止。')
+      const model = clip(record(input)['model'], 200)
+      if (!model) return fail('请选择一个视觉模型。')
+      if (!(await host.models.list()).some((option) => option.ref === model && option.vision)) {
+        return fail('这个模型不可用，请重新选择。')
+      }
+      const queue = [...(await stickers()).values()]
+        .filter((sticker) => sticker.deletedAt === undefined)
+        .map((sticker) => sticker.id)
+      const job: ReviewJob = {
+        state: queue.length === 0 ? 'done' : 'running',
+        model,
+        queue,
+        total: queue.length,
+        done: 0,
+        removed: 0,
+        localized: 0,
+        failed: 0,
+        errors: [],
+      }
+      await writeReview(job)
+      return { ok: true, job: { ...job, queue: [] } }
+    })
+    void pump()
+    return started as unknown as ExtensionJsonValue
+  })
+
+  harness.handle('review.status', async () => {
+    const job = await readReview()
+    return job === undefined ? null : ({ ...job, queue: [] } as unknown as ExtensionJsonValue)
+  })
+
+  harness.handle('review.cancel', () =>
+    serial(async () => {
+      const job = await readReview()
+      if (job?.state === 'running') await writeReview({ ...job, state: 'cancelled', queue: [] })
+      return { ok: true }
+    }),
+  )
+
   harness.handle('channel.get', async (_input, caller) => {
     const channelId = channelOf(caller)
     if (!channelId) return null
@@ -1120,7 +1317,7 @@ export default defineHostExtension(async ({ harness, nxt: host }) => {
           harness.defineTool<Args, Result>({
             name: 'sticker_save',
             description:
-              '把当前频道里的一张图交给表情包库收藏。assetId 是消息里图片的编号；note 可选，用几个字说明它适合什么时候发（最多 30 字）。用途、配文和能否带到别的群由表情包库判断。',
+              '把当前频道里的一张图交给表情包库收藏。assetId 是消息里图片的编号；note 可选，用几个字说明它适合什么时候发（最多 30 字）。是不是表情包、用途、配文和能否带到别的群由表情包库判断，截图、照片、长图这类不收。',
             parameters: {
               assetId: { type: 'string', required: true, description: '图片的编号，例如消息里的 [图片 ast_…]' },
               note: { type: 'string', description: '适合什么时候发，可不填' },
@@ -1134,8 +1331,8 @@ export default defineHostExtension(async ({ harness, nxt: host }) => {
                     : value.state === 'exists'
                       ? '库里已经有这张。'
                       : value.waiting
-                        ? '已加入收藏队列，管理员选好标注模型后入库。'
-                        : '已加入收藏队列。',
+                        ? '已加入收藏队列，管理员选好标注模型后判断入库。'
+                        : '已加入收藏队列。判断不是表情包、没有收进库的话，之后会告诉你原因。',
                 ),
             },
             execute: async (args) => {
@@ -1152,14 +1349,18 @@ export default defineHostExtension(async ({ harness, nxt: host }) => {
               }
               if (!PICTURE_TYPES.has(info.mediaType)) return fail('只收藏 PNG、JPEG、GIF 或 WebP 图片。')
               if (info.byteSize > MAX_BYTES) return fail('这张图超过 8 MB，不收藏。')
+              const problem = pictureProblem(info)
+              if (problem !== undefined) return fail(`这张图${problem}，没有收进库。`)
               const note = clip(args.note, 30)
               const result = await serial(async (): Promise<Result> => {
                 const existing = (await stickers()).get(assetId)
                 const now = Date.now()
                 if (existing !== undefined) {
-                  // 回收站里的图再被交来时恢复；收紧过的使用范围不变。
-                  const { deletedAt: _deletedAt, ...rest } = existing
-                  await put({ ...rest, sources: including(existing.sources, channelId, Infinity), updatedAt: now })
+                  // 回收站里的图是判断过不收或有人删掉的，由管理员决定要不要恢复；收紧过的使用范围不变。
+                  if (existing.deletedAt !== undefined) {
+                    return fail('这张图在表情包库的回收站里，没有收进库；需要的话请管理员在「表情包」页面恢复。')
+                  }
+                  await put({ ...existing, sources: including(existing.sources, channelId, Infinity), updatedAt: now })
                   return { ok: true, state: 'exists', waiting: false }
                 }
                 const items = await readQueue()
@@ -1184,7 +1385,11 @@ export default defineHostExtension(async ({ harness, nxt: host }) => {
                 }
                 await putCandidate(candidate)
                 await enqueue(
-                  collectItem(candidate, true, { collectorName: call.agent.name, ...(note ? { note } : {}) }),
+                  collectItem(candidate, true, {
+                    collectorName: call.agent.name,
+                    askedBy: { agent: call.agent.id, channel: channelId },
+                    ...(note ? { note } : {}),
+                  }),
                 )
                 return { ok: true, state: 'queued', waiting: (await readSettings()).model === undefined }
               })

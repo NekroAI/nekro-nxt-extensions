@@ -7,7 +7,7 @@ import {
 import styles from '../assets/client.module.css'
 
 /**
- * 「表情包」页面与频道面板：页面浏览、搜索、编辑、批量导入与收集设置，面板设置单个频道的收集与使用范围。
+ * 「表情包」页面与频道面板：页面浏览、搜索、编辑、批量导入、重新复核与收集设置，面板设置单个频道的收集与使用范围。
  * 图片通过 `host.assetUrl` 显示，导入时先用 `host.upload` 把图片或压缩包放进扩展资源库，再交给本机实例标注。
  */
 type View = 'all' | 'public' | 'local' | 'flowed' | 'unlabeled' | 'trash'
@@ -44,6 +44,16 @@ interface ImportStatus {
   readonly total: number
   readonly done: number
   readonly skipped: number
+  readonly failed: number
+  readonly errors: readonly string[]
+}
+
+interface ReviewStatus {
+  readonly state: 'running' | 'done' | 'cancelled'
+  readonly total: number
+  readonly done: number
+  readonly removed: number
+  readonly localized: number
   readonly failed: number
   readonly errors: readonly string[]
 }
@@ -151,6 +161,41 @@ export default defineClientExtension(({ React, host }) => ({
       note: { margin: 0, color: 'var(--muted)', font: 'var(--t-note)' },
       errors: { margin: 0, paddingLeft: 'var(--s-5)', color: 'var(--muted)', font: 'var(--t-note)' },
     } as const
+
+    const progressBar = (done: number, total: number) =>
+      h(
+        'div',
+        {
+          style: inline.progress,
+          role: 'progressbar',
+          'aria-valuemin': 0,
+          'aria-valuemax': total,
+          'aria-valuenow': done,
+        },
+        h('div', {
+          style: { ...inline.progressBar, width: `${total === 0 ? 100 : (done / total) * 100}%` },
+        }),
+      )
+
+    /** 复核结果的一句话；失败的保持原样。 */
+    const reviewSummary = (status: ReviewStatus) =>
+      `检查 ${status.done - status.failed} 张，移入回收站 ${status.removed} 张，改为仅限来源频道 ${status.localized} 张${status.failed > 0 ? `；${status.failed} 张复核失败，保持原样` : ''}。`
+
+    /** 选择视觉模型，默认用收集设置里的标注模型。 */
+    const useVisionModels = () => {
+      const [models, setModels] = React.useState<readonly ModelOption[] | undefined>(undefined)
+      const [model, setModel] = React.useState(NO_MODEL)
+      React.useEffect(() => {
+        void Promise.all([host.call('import.models'), host.call('library.settings')]).then(([value, settings]) => {
+          const list = Array.isArray(value) ? (value as unknown as readonly ModelOption[]) : []
+          setModels(list)
+          const chosen = String(record(settings)['model'] ?? '')
+          const preferred = list.find((option) => option.ref === chosen) ?? list[0]
+          if (preferred) setModel(preferred.ref)
+        })
+      }, [])
+      return { models, model, setModel }
+    }
 
     const channelList = (ids: readonly string[]) =>
       ids.length === 0
@@ -346,22 +391,13 @@ export default defineClientExtension(({ React, host }) => ({
       readonly onChanged: () => void
     }) => {
       const [files, setFiles] = React.useState<readonly ExtensionUploadFile[]>([])
-      const [models, setModels] = React.useState<readonly ModelOption[] | undefined>(undefined)
-      const [model, setModel] = React.useState(NO_MODEL)
+      const { models, model, setModel } = useVisionModels()
       const [upload, setUpload] = React.useState<{ sent: number; total: number } | undefined>(undefined)
       const [uploadSkipped, setUploadSkipped] = React.useState<readonly string[]>([])
       const [status, setStatus] = React.useState<ImportStatus | undefined>(undefined)
       const [error, setError] = React.useState<string | undefined>(undefined)
       const picker = React.useRef<{ click(): void } | null>(null)
       React.useEffect(() => {
-        void Promise.all([host.call('import.models'), host.call('library.settings')]).then(([value, settings]) => {
-          const list = Array.isArray(value) ? (value as unknown as readonly ModelOption[]) : []
-          setModels(list)
-          // 默认用收集设置里的标注模型。
-          const chosen = String(record(settings)['model'] ?? '')
-          const preferred = list.find((option) => option.ref === chosen) ?? list[0]
-          if (preferred) setModel(preferred.ref)
-        })
         void host.call('import.status').then((value) => {
           const current = record(value)
           if (current['state'] === 'running') setStatus(current as unknown as ImportStatus)
@@ -412,20 +448,7 @@ export default defineClientExtension(({ React, host }) => ({
       }
 
       const visionModels = models ?? []
-      const progress = (done: number, total: number) =>
-        h(
-          'div',
-          {
-            style: inline.progress,
-            role: 'progressbar',
-            'aria-valuemin': 0,
-            'aria-valuemax': total,
-            'aria-valuenow': done,
-          },
-          h('div', {
-            style: { ...inline.progressBar, width: `${total === 0 ? 100 : (done / total) * 100}%` },
-          }),
-        )
+      const progress = progressBar
       const body =
         status !== undefined
           ? h(
@@ -544,6 +567,152 @@ export default defineClientExtension(({ React, host }) => ({
                       onClick: () => void start(),
                     },
                     relabel ? '开始标注' : `导入${files.length > 0 ? ` ${files.length} 个文件` : ''}`,
+                  ),
+                ],
+        },
+        body,
+      )
+    }
+
+    const ReviewDialog = ({
+      total,
+      onClose,
+      onChanged,
+    }: {
+      /** 库里现有的表情包张数（不含回收站）。 */
+      readonly total: number
+      readonly onClose: () => void
+      readonly onChanged: () => void
+    }) => {
+      const { models, model, setModel } = useVisionModels()
+      const [status, setStatus] = React.useState<ReviewStatus | undefined>(undefined)
+      const [started, setStarted] = React.useState(false)
+      const [error, setError] = React.useState<string | undefined>(undefined)
+      React.useEffect(() => {
+        void host.call('review.status').then((value) => {
+          if (value !== null) setStatus(record(value) as unknown as ReviewStatus)
+        })
+      }, [])
+      const running = status?.state === 'running'
+      const lastDone = React.useRef(-1)
+      React.useEffect(() => {
+        if (!running) return undefined
+        const timer = setInterval(() => {
+          void host.call('review.status').then((value) => {
+            const next = record(value) as unknown as ReviewStatus
+            if (next.done !== lastDone.current || next.state !== 'running') onChanged()
+            lastDone.current = next.done
+            setStatus(next)
+          })
+        }, 1500)
+        return () => clearInterval(timer)
+      }, [running])
+
+      const start = async () => {
+        setError(undefined)
+        try {
+          const result = record(await host.call('review.start', { model }))
+          if (result['ok'] === false) throw new Error(String(result['message']))
+          setStatus(record(result['job']) as unknown as ReviewStatus)
+          setStarted(true)
+        } catch (reason) {
+          setError(message(reason))
+        }
+      }
+
+      const visionModels = models ?? []
+      // 打开时上次的复核已经结束：显示选择模型的表单，附上上次的结果。
+      const showResult = status !== undefined && (running || started)
+      const body = showResult
+        ? h(
+            Stack,
+            null,
+            h(
+              'p',
+              null,
+              status.state === 'running'
+                ? `正在复核：${status.done} / ${status.total}`
+                : status.state === 'cancelled'
+                  ? `已停止。${reviewSummary(status)}`
+                  : `已完成：${reviewSummary(status)}`,
+            ),
+            status.state === 'running' ? progressBar(status.done, status.total) : null,
+            status.errors.length > 0
+              ? h(
+                  'ul',
+                  { style: inline.errors },
+                  ...status.errors.slice(-5).map((line, index) => h('li', { key: `${index}-${line}` }, line)),
+                )
+              : null,
+          )
+        : h(
+            Stack,
+            null,
+            error === undefined ? null : h(InlineFeedback, { tone: 'error' }, error),
+            h(
+              'p',
+              null,
+              `用所选模型重新检查库里的 ${total} 张表情包：不是表情包的移入回收站，不宜公共的改为仅限来源频道，用途和配文按检查结果更新。`,
+            ),
+            h(
+              Field,
+              {
+                label: '标注模型',
+                hint:
+                  visionModels.length === 0
+                    ? '没有可用的视觉模型，可在「设置 → 模型」中添加。'
+                    : '每张图调用一次模型，计入该模型的用量。',
+              },
+              h(Select, {
+                value: model,
+                options: visionModels.map((option) => ({
+                  value: option.ref,
+                  label: `${option.name} · ${option.providerName}`,
+                })),
+                onValueChange: setModel,
+              }),
+            ),
+            status === undefined ? null : h('p', { style: inline.note }, `上次复核：${reviewSummary(status)}`),
+          )
+      return h(
+        Dialog,
+        {
+          open: true,
+          title: '重新复核',
+          onOpenChange: (open: boolean) => (open ? undefined : onClose()),
+          actions: running
+            ? [
+                h(
+                  Button,
+                  {
+                    key: 'cancel',
+                    variant: 'ghost',
+                    onClick: () =>
+                      void host
+                        .call('review.cancel')
+                        .then(() => host.call('review.status'))
+                        .then((value) => {
+                          setStatus(record(value) as unknown as ReviewStatus)
+                          onChanged()
+                        }),
+                  },
+                  '停止复核',
+                ),
+                h(Button, { key: 'background', variant: 'primary', onClick: onClose }, '在后台继续'),
+              ]
+            : showResult
+              ? [h(Button, { key: 'close', onClick: onClose }, '关闭')]
+              : [
+                  h(Button, { key: 'close', variant: 'ghost', onClick: onClose }, '取消'),
+                  h(
+                    Button,
+                    {
+                      key: 'start',
+                      variant: 'primary',
+                      disabled: model === NO_MODEL || total === 0,
+                      onClick: () => void start(),
+                    },
+                    '开始复核',
                   ),
                 ],
         },
@@ -680,6 +849,8 @@ export default defineClientExtension(({ React, host }) => ({
       const [job, setJob] = React.useState<ImportStatus | undefined>(undefined)
       const [collect, setCollect] = React.useState<CollectStatus | undefined>(undefined)
       const [configuring, setConfiguring] = React.useState(false)
+      const [reviewing, setReviewing] = React.useState(false)
+      const [review, setReview] = React.useState<ReviewStatus | undefined>(undefined)
 
       // 收集队列在后台处理，入库数变化时刷新列表。
       React.useEffect(() => {
@@ -719,6 +890,26 @@ export default defineClientExtension(({ React, host }) => ({
         return () => clearInterval(timer)
       }, [importing])
 
+      // 复核在后台进行时，页面上显示进度，并随着进度刷新列表。
+      React.useEffect(() => {
+        if (reviewing) return undefined
+        let last = -1
+        const check = () =>
+          void host
+            .call('review.status')
+            .then((value) => {
+              const next = value === null ? undefined : (record(value) as unknown as ReviewStatus)
+              setReview(next?.state === 'running' ? next : undefined)
+              const progress = next === undefined ? -1 : next.done + (next.state === 'running' ? 0 : 1)
+              if (last >= 0 && progress !== last) refresh()
+              last = progress
+            })
+            .catch(() => undefined)
+        check()
+        const timer = setInterval(check, 3000)
+        return () => clearInterval(timer)
+      }, [reviewing])
+
       React.useEffect(() => {
         void host
           .call('library.overview')
@@ -753,6 +944,13 @@ export default defineClientExtension(({ React, host }) => ({
           : {}),
         actions: [
           h(Button, { key: 'collect', variant: 'ghost', onClick: () => setConfiguring(true) }, '收集设置'),
+          overview !== undefined && (overview.total > 0 || review !== undefined)
+            ? h(
+                Button,
+                { key: 'review', variant: 'ghost', onClick: () => setReviewing(true) },
+                review === undefined ? '重新复核' : `正在复核 ${review.done} / ${review.total}`,
+              )
+            : null,
           job === undefined && overview !== undefined && overview.unlabeled > 0
             ? h(
                 Button,
@@ -896,6 +1094,13 @@ export default defineClientExtension(({ React, host }) => ({
                   .call('collect.status')
                   .then((value) => setCollect(record(value) as unknown as CollectStatus))
                   .catch(() => undefined),
+            })
+          : null,
+        reviewing
+          ? h(ReviewDialog, {
+              total: overview?.total ?? 0,
+              onClose: () => setReviewing(false),
+              onChanged: refresh,
             })
           : null,
         importing === undefined
