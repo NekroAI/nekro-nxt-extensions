@@ -159,9 +159,19 @@ describe('收藏与跨群使用', () => {
     await save(host, 'ast_CRY')
     await host.delivered({ parts: [{ type: 'image', assetId: 'ast_CRY' }], deliveryState: 'failed' })
     await host.delivered({ parts: [{ type: 'image', assetId: 'ast_CRY' }], followUp: true })
-    await host.delivered({ parts: [{ type: 'image', assetId: 'ast_OTHER' }, { type: 'text', text: '哈哈' }] })
+    await host.delivered({
+      parts: [
+        { type: 'image', assetId: 'ast_OTHER' },
+        { type: 'text', text: '哈哈' },
+      ],
+    })
     expect((await list(host)).items[0]).toMatchObject({ id: 'ast_CRY', sentCount: 0 })
-    await host.delivered({ parts: [{ type: 'text', text: '看这个' }, { type: 'image', assetId: 'ast_CRY' }] })
+    await host.delivered({
+      parts: [
+        { type: 'text', text: '看这个' },
+        { type: 'image', assetId: 'ast_CRY' },
+      ],
+    })
     expect((await list(host)).items[0]).toMatchObject({ id: 'ast_CRY', sentCount: 1, sentTo: [ROOM_A.id] })
   })
 

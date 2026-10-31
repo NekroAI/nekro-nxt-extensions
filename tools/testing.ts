@@ -478,8 +478,7 @@ export const createTestHost = async (
     async delivered(
       message: Partial<Omit<NxtOutboundDelivered, 'parts'>> & {
         readonly parts: readonly (
-          | { readonly type: 'text'; readonly text: string }
-          | { readonly type: 'image'; readonly assetId: string }
+          { readonly type: 'text'; readonly text: string } | { readonly type: 'image'; readonly assetId: string }
         )[]
       },
     ): Promise<NxtOutboundResult | void> {
