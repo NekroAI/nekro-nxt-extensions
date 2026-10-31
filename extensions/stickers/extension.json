@@ -5,7 +5,7 @@
   "description": "让智能体用表情包表达情绪：自动收集群里大家常发的表情包，回复时挑一张合适的发出。公共表情包在各个频道共享，已有的表情包可以批量导入。",
   "createdAt": 1791660757053,
   "requires": {
-    "sdk": 11
+    "sdk": 13
   },
   "clientCss": "assets/client.module.css",
   "permissions": {
@@ -64,6 +64,10 @@
         "reads": "all",
         "mayHide": false,
         "mayForceTrigger": false,
+        "timeoutMs": 5000
+      },
+      "outbound": {
+        "read": true,
         "timeoutMs": 5000
       }
     }
@@ -226,11 +230,6 @@
       "verificationInput": {
         "query": "开心"
       }
-    },
-    {
-      "kind": "tool",
-      "name": "sticker_use",
-      "description": "取得可以发送的表情包图片"
     },
     {
       "kind": "tool",

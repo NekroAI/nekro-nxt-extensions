@@ -144,11 +144,25 @@ describe('收藏与跨群使用', () => {
     expect(found.blocks.filter((block) => block.type === 'image')).toEqual([
       { type: 'image', assetId: 'ast_CRY', label: '候选 1' },
     ])
-    expect(found.text).toContain('sticker_use')
+    expect(found.text).toContain('{"type":"image","assetId":"编号"}')
+    // 搜到的候选已经在乙群授权，编号可以直接发送。
+    expect(host.tools.has('sticker_use')).toBe(false)
+    await host.delivered({ parts: [{ type: 'image', assetId: 'ast_CRY' }] })
+    expect((await list(host)).items[0]).toMatchObject({ id: 'ast_CRY', sentCount: 1, sentTo: [ROOM_B.id] })
+  })
 
-    const used = await host.call('sticker_use', { id: 'ast_CRY' })
-    expect(used.value).toEqual({ ok: true, assetId: 'ast_CRY' })
-    expect(used.text).toContain('{"type":"image","assetId":"ast_CRY"}')
+  it('只有投递成功、由智能体自己发出的表情包才记一次使用', async () => {
+    const host = await setup()
+    host.addPicture('ast_CRY', { channels: [ROOM_A.id] })
+    host.addPicture('ast_OTHER', { channels: [ROOM_A.id] })
+    host.useChannel(ROOM_A)
+    await save(host, 'ast_CRY')
+    await host.delivered({ parts: [{ type: 'image', assetId: 'ast_CRY' }], deliveryState: 'failed' })
+    await host.delivered({ parts: [{ type: 'image', assetId: 'ast_CRY' }], followUp: true })
+    await host.delivered({ parts: [{ type: 'image', assetId: 'ast_OTHER' }, { type: 'text', text: '哈哈' }] })
+    expect((await list(host)).items[0]).toMatchObject({ id: 'ast_CRY', sentCount: 0 })
+    await host.delivered({ parts: [{ type: 'text', text: '看这个' }, { type: 'image', assetId: 'ast_CRY' }] })
+    expect((await list(host)).items[0]).toMatchObject({ id: 'ast_CRY', sentCount: 1, sentTo: [ROOM_A.id] })
   })
 
   it('收藏只交图片编号，备注交给打标模型参考', async () => {
@@ -183,7 +197,6 @@ describe('收藏与跨群使用', () => {
     expect((await host.call('sticker_search', { query: '委屈' })).value).toMatchObject({ items: [{ id: 'ast_CHAT' }] })
     host.useChannel(ROOM_B)
     expect((await host.call('sticker_search', { query: '委屈' })).value).toEqual({ ok: true, items: [] })
-    expect((await host.call('sticker_use', { id: 'ast_CHAT' })).text).toContain('不能在这个群用')
   })
 
   it('同一张图在另一个群再收藏时合并来源；外观相近的不同图分开保存', async () => {
@@ -212,7 +225,7 @@ describe('收藏与跨群使用', () => {
       await save(host, id)
     }
     const first = (await host.call('sticker_search', { query: '委屈' })).value as { items: { id: string }[] }
-    await host.call('sticker_use', { id: first.items[0]!.id })
+    await host.delivered({ parts: [{ type: 'image', assetId: first.items[0]!.id }] })
     const next = (await host.call('sticker_search', { query: '委屈' })).value as { items: { id: string }[] }
     expect(next.items.map(({ id }) => id)).toEqual([first.items[1]!.id, first.items[0]!.id])
   })
@@ -469,7 +482,7 @@ describe('使用提示', () => {
     expect(await ask(host)).toBeUndefined()
     expect(await ask(host)).toEqual({ annotation: '这次回复适合配一张表情包，有合适的就发。' })
     expect(await ask(host)).toBeUndefined()
-    await host.call('sticker_use', { id: 'ast_STOCK' })
+    await host.delivered({ parts: [{ type: 'image', assetId: 'ast_STOCK' }] })
     expect(await ask(host)).toBeUndefined()
     expect(await ask(host)).toMatchObject({ annotation: expect.any(String) })
     // 不会唤醒智能体的消息不计数。

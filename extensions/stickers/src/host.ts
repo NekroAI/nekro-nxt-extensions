@@ -16,7 +16,7 @@ import {
  * - 收集不占智能体的回合：入站处理函数（`harness.onInbound`）记下每张图被哪些人发过，达到门槛后收进资源库、排进收集队列；
  * - 收集队列在本机实例里按页面设置的并行数处理：先按固定规则过滤，再用页面选择的标注模型（本机层 `models`）写用途与配文、判断能否公共；
  * - 智能体收藏只交一个图片编号，同样进收集队列、按同样的标准判断；没收进库时，原因随这个频道下一条唤醒智能体的消息附注给它；
- * - 使用时搜索结果附上候选图，智能体确认后再发，并顺手修正、收紧或清理；
+ * - 使用时搜索结果附上候选图，智能体确认后直接用编号发送，并顺手修正、收紧或清理；发出后出站处理函数（`harness.onOutbound`）记下发了哪张、发到哪个群；
  * - 管理员可以在页面上重新复核整个库：后台逐张重新判断，进度存在本机存储里，重启后接着做；
  * - 使用提示随消息附注（annotation）给出，按使用频率在一个随机区间里出现，不改系统提示；
  * - 本机实例持有记录与候选的内存副本，所有读改写经同一个队列，避免并发写丢失。
@@ -364,7 +364,7 @@ const stickerLike = (message: NxtInboundMessage): boolean =>
 const GUIDE = (collect: 'auto' | 'asked' | 'off', frequency: Frequency): string =>
   [
     '你可以给群里发表情包。库里的表情包可能来自你待过的各个群。',
-    '发表情包：想用一张图表达情绪或回应时，先用 sticker_search 按想表达的意思找，比如「被夸了有点得意」；从候选里挑一张，用 sticker_use 取得 assetId，再用 send_channel_message 的 image 块发出去。都不合适就不发。',
+    '发表情包：想用一张图表达情绪或回应时，先用 sticker_search 按想表达的意思找，比如「被夸了有点得意」；从候选里挑一张，把它的编号作为 assetId 放进 send_channel_message 的 image 块发出去。都不合适就不发。',
     FREQUENCY[frequency],
     collect === 'auto'
       ? '收藏：群里大家常发的表情包会自动收进库里。看到值得收藏的，或者有人请你收藏某张图，用 sticker_save 把图片编号交过去就行，是不是表情包、用途和能否带到别的群由表情包库判断。'
@@ -1011,6 +1011,42 @@ export default defineHostExtension(async ({ harness, nxt: host }) => {
     return TIP
   }
 
+  // ---------- 出站：智能体发出的消息里有库里的表情包时，记下发到了哪个群 ----------
+  harness.onOutbound?.(async (message) => {
+    if (message.stage !== 'delivered' || message.followUp === true) return
+    if (message.deliveryState !== 'sent' && message.deliveryState !== 'partially-sent') return
+    const sent = new Set(message.parts.flatMap((part) => (part.type === 'image' ? [part.assetId] : [])))
+    if (sent.size === 0) return
+    const channelId = message.channel.id
+    await serial(async () => {
+      const all = await stickers()
+      const used = [...sent].flatMap((id) => {
+        const sticker = all.get(id)
+        return sticker === undefined ? [] : [sticker]
+      })
+      if (used.length === 0) return
+      const at = Date.now()
+      for (const sticker of used) {
+        await put({
+          ...sticker,
+          sentCount: sticker.sentCount + 1,
+          lastSentAt: at,
+          sentTo: sticker.sentTo.includes(channelId) ? sticker.sentTo : [...sticker.sentTo, channelId],
+        })
+      }
+      const recentKey = `${RECENT_PREFIX}${channelId}`
+      const recent = ((await host.storage.get(recentKey)) as unknown as readonly string[] | undefined) ?? []
+      const ids = used.map((sticker) => sticker.id)
+      await host.storage.set(
+        recentKey,
+        [...ids, ...recent.filter((entry) => !ids.includes(entry))].slice(0, RECENT_LIMIT),
+      )
+      // 刚发过表情包，下一次提示重新计数。
+      const tip = tips.get(channelId)
+      if (tip !== undefined) tip.since = 0
+    })
+  })
+
   harness.onInbound?.(async (message, nxt) => {
     const config = record(nxt.config())
     const channelId = message.channel.id
@@ -1305,7 +1341,6 @@ export default defineHostExtension(async ({ harness, nxt: host }) => {
 
       if (collect !== 'off') registerSave(nxt)
       registerSearch(nxt)
-      registerUse(nxt)
       registerUpdate()
       registerRemove()
 
@@ -1437,7 +1472,7 @@ export default defineHostExtension(async ({ harness, nxt: host }) => {
                   })),
                   {
                     type: 'text',
-                    text: '确认图的内容后再决定发哪张，都不合适就不发；要发的用 sticker_use 取得 assetId。描述和图对不上的用 sticker_update 改；图里有某个群的聊天、账号、个人信息的，用 sticker_update 把 scope 改成 local；不是表情包的用 sticker_remove。',
+                    text: '确认图的内容后再决定发哪张，都不合适就不发；要发的把编号作为 assetId 放进 send_channel_message 的 image 块，例如 {"type":"image","assetId":"编号"}。描述和图对不上的用 sticker_update 改；图里有某个群的聊天、账号、个人信息的，用 sticker_update 把 scope 改成 local；不是表情包的用 sticker_remove。',
                   },
                 ]
               },
@@ -1482,82 +1517,23 @@ export default defineHostExtension(async ({ harness, nxt: host }) => {
                 ...found.filter((sticker) => !recent.has(sticker.id)),
                 ...found.filter((sticker) => recent.has(sticker.id)),
               ]
-              return {
-                ok: true,
-                items: ordered.slice(0, limit).map((sticker) => ({
+              // 候选先在这个群授权，编号就能直接发送；发出后由出站处理记下用了哪张。
+              const items: Item[] = []
+              for (const sticker of ordered.slice(0, limit)) {
+                try {
+                  await agentNxt.assets.attach(sticker.id)
+                } catch {
+                  continue
+                }
+                items.push({
                   id: sticker.id,
                   meaning: sticker.meaning,
                   caption: sticker.caption,
                   tags: [...sticker.tags],
                   animated: sticker.frames > 1,
-                })),
-              }
-            },
-          }),
-        )
-      }
-
-      function registerUse(agentNxt: NxtHostService) {
-        type Result = { readonly ok: true; readonly assetId: string } | Failure
-        harness.registerTool(
-          ctx,
-          harness.defineTool<{ readonly id?: string }, Result>({
-            name: 'sticker_use',
-            description:
-              '准备发送 sticker_search 找到的一张表情包，返回 assetId；再用 send_channel_message 的 image 块发出去。',
-            parameters: { id: { type: 'string', required: true, description: 'sticker_search 结果里的编号' } },
-            output: {
-              schema: { type: 'json' },
-              render: (_args, value) =>
-                text(
-                  value.ok
-                    ? `可以发送了：把 {"type":"image","assetId":"${value.assetId}"} 放进 send_channel_message 的 parts。`
-                    : value.message,
-                ),
-            },
-            execute: async (args) => {
-              const id = clip(args.id, 128)
-              const call = await agentNxt.context.current()
-              const settings = await readChannel(call.channel.id)
-              const { paused } = await readSettings()
-              return serial(async () => {
-                const sticker = (await stickers()).get(id)
-                if (
-                  sticker === undefined ||
-                  !isAvailable(sticker, {
-                    channelId: call.channel.id,
-                    use: settings.use,
-                    paused,
-                    ...(ownOnly ? { collector: call.agent.id } : {}),
-                  })
-                ) {
-                  return fail('这张表情包不能在这个群用，请用 sticker_search 重新找。')
-                }
-                let attached
-                try {
-                  attached = await agentNxt.assets.attach(id)
-                } catch (error) {
-                  return fail(errorText(error))
-                }
-                await put({
-                  ...sticker,
-                  sentCount: sticker.sentCount + 1,
-                  lastSentAt: Date.now(),
-                  sentTo: sticker.sentTo.includes(call.channel.id)
-                    ? sticker.sentTo
-                    : [...sticker.sentTo, call.channel.id],
                 })
-                const recentKey = `${RECENT_PREFIX}${call.channel.id}`
-                const recent = ((await host.storage.get(recentKey)) as unknown as readonly string[] | undefined) ?? []
-                await host.storage.set(
-                  recentKey,
-                  [id, ...recent.filter((entry) => entry !== id)].slice(0, RECENT_LIMIT),
-                )
-                // 刚发过表情包，下一次提示重新计数。
-                const tip = tips.get(call.channel.id)
-                if (tip !== undefined) tip.since = 0
-                return { ok: true, assetId: attached.assetId }
-              })
+              }
+              return { ok: true, items }
             },
           }),
         )
