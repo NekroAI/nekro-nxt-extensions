@@ -28,6 +28,9 @@ import type {
   NxtHostLayerService,
   NxtHostService,
   NxtInboundDecision,
+  NxtOutboundDelivered,
+  NxtOutboundHandler,
+  NxtOutboundResult,
   NxtInboundHandler,
   NxtInboundMessage,
   NxtJobDecision,
@@ -118,6 +121,7 @@ export const createTestHost = async (
   const tools = new Map<string, ExtensionToolDefinition>()
   const rpc = new Map<string, ExtensionRpcHandler>()
   let inbound: NxtInboundHandler | undefined
+  let outbound: NxtOutboundHandler | undefined
   let job: NxtJobHandler | undefined
   const storage = new Map<string, NxtStorageEntry>()
   const assets: { assetId: string; mediaType: string; name?: string; base64?: string; text?: string }[] = []
@@ -199,7 +203,8 @@ export const createTestHost = async (
         return options.fetch(url, init)
       },
     },
-    secrets: { get: async (key) => options.secrets?.[key] },
+    // 占位符只是记号：测试宿主不替换，断言请求里出现的是它而不是明文。
+    secrets: { get: async (key) => options.secrets?.[key], placeholder: (key) => `{{nxt-credential:${key}}}` },
     assets: {
       create: async (input) => {
         const record = {
@@ -370,6 +375,10 @@ export const createTestHost = async (
         inbound = handler
         return () => (inbound = undefined)
       },
+      onOutbound: (handler) => {
+        outbound = handler
+        return () => (outbound = undefined)
+      },
       onJob: (handler) => {
         job = handler
         return () => (job = undefined)
@@ -461,6 +470,31 @@ export const createTestHost = async (
           wouldTrigger: true,
           receivedAt: now(),
           ...message,
+        },
+        nxt,
+      )
+    },
+    /** 像宿主一样通知一条智能体发出的消息已经投递；默认投递成功、发到当前频道。 */
+    async delivered(
+      message: Partial<Omit<NxtOutboundDelivered, 'parts'>> & {
+        readonly parts: readonly (
+          | { readonly type: 'text'; readonly text: string }
+          | { readonly type: 'image'; readonly assetId: string }
+        )[]
+      },
+    ): Promise<NxtOutboundResult | void> {
+      if (!outbound) throw new Error('扩展没有注册出站处理函数。')
+      return outbound(
+        {
+          stage: 'delivered',
+          channel: { id: context.channel.id, kind: context.channel.kind },
+          logicalMessageId: 'msg_OUT',
+          text: message.parts.flatMap((part) => (part.type === 'text' ? [part.text] : [])).join(''),
+          deliveryState: 'sent',
+          platformMessageIds: ['platform-out'],
+          ...message,
+          // 测试用的编号是普通字符串；宿主里它们是已校验的 Asset 编号。
+          parts: message.parts as unknown as NxtOutboundDelivered['parts'],
         },
         nxt,
       )
