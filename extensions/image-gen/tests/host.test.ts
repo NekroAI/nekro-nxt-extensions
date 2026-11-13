@@ -274,6 +274,48 @@ describe('图片生成', () => {
     })
   })
 
+  describe('图片数据的 data URL 前缀', () => {
+    const webp = Buffer.from('RIFF\u0000\u0000\u0000\u0000WEBPVP8 ', 'latin1').toString('base64')
+    it.each([
+      ['plain PNG', png, png, 'image/png'],
+      ['prefixed JPEG', `data:image/jpeg;base64,${jpeg}`, jpeg, 'image/jpeg'],
+      ['prefixed jpg alias', `data:image/jpg;base64,${jpeg}`, jpeg, 'image/jpeg'],
+      [
+        'prefixed PNG with whitespace',
+        ` data:image/png;base64,${png.slice(0, 20)}\n${png.slice(20)} `,
+        png,
+        'image/png',
+      ],
+      ['prefixed WebP', `DATA:image/webp;base64,${webp}`, webp, 'image/webp'],
+      // 前缀里的类型优先于按文件头猜测。
+      ['prefix wins over sniffing', `data:image/webp;base64,${png}`, png, 'image/webp'],
+    ])('saves a %s b64_json as pure base64', async (_label, b64, expected, mediaType) => {
+      const host = await createTestHost(factory, {
+        secrets,
+        hostConfig: { model: 'doubao-seedream-5-0-260128' },
+        fetch: () => respond({ data: [{ b64_json: b64 }] }),
+      })
+      expect((await host.call('generate_image', { prompt: '示例' })).value).toMatchObject({ ok: true, mediaType })
+      expect(host.assets[0]).toMatchObject({ base64: expected, mediaType })
+    })
+
+    it('strips the prefix from Gemini inlineData as well', async () => {
+      const host = await createTestHost(factory, {
+        secrets,
+        fetch: () =>
+          respond({
+            candidates: [
+              {
+                content: { parts: [{ inlineData: { mimeType: 'image/png', data: `data:image/jpeg;base64,${jpeg}` } }] },
+              },
+            ],
+          }),
+      })
+      await host.call('generate_image', { prompt: '示例' })
+      expect(host.assets[0]).toMatchObject({ base64: jpeg, mediaType: 'image/jpeg' })
+    })
+  })
+
   describe('对话接口返回图片', () => {
     const chat =
       (content: unknown, extra: Record<string, unknown> = {}): FetchHandler =>

@@ -162,7 +162,7 @@ class ServiceError extends Error {
   }
 }
 
-const DATA_URL = /^data:(image\/[\w.+-]+);base64,([A-Za-z0-9+/=\s]+)$/u
+const DATA_URL = /^data:(image\/[\w.+-]+);base64,([A-Za-z0-9+/=\s]+)$/iu
 const MARKDOWN_IMAGE = /!\[[^\]]*\]\(\s*<?(data:image\/[\w.+-]+;base64,[A-Za-z0-9+/=]+|https?:\/\/[^\s)>]+)>?\s*\)/u
 const BARE_IMAGE =
   /data:image\/[\w.+-]+;base64,[A-Za-z0-9+/=]+|https?:\/\/[^\s)"'<>]+?\.(?:png|jpe?g|webp|gif)(?:\?[^\s)"'<>]*)?/iu
@@ -263,6 +263,17 @@ const sniffMediaType = (base64: string, declared?: string): string => {
   if (head.startsWith('RIFF') && head.slice(8, 12) === 'WEBP') return 'image/webp'
   if (head.startsWith('GIF8')) return 'image/gif'
   return declared?.startsWith('image/') ? declared : 'image/png'
+}
+
+/**
+ * 各种调用方式拿到的 base64 都经过这里再保存：有的服务（如 Seedream）在 b64_json 里也带 data URL 前缀，
+ * 宿主只收纯 base64。前缀里的类型优先，其次按文件头识别，最后用服务声明的类型。
+ */
+const imageData = (raw: string, declared?: string): { readonly base64: string; readonly mediaType: string } => {
+  const data = DATA_URL.exec(raw.trim())
+  const base64 = (data ? data[2]! : raw).replaceAll(/\s+/gu, '')
+  const prefixed = data?.[1]!.toLowerCase().replace(/^image\/jpg$/u, 'image/jpeg')
+  return { base64, mediaType: prefixed ?? sniffMediaType(base64, declared) }
 }
 
 const EXTENSIONS: Readonly<Record<string, string>> = {
@@ -608,10 +619,10 @@ export default defineHostExtension(async ({ harness, nxt: host }) => ({
                 }
               }
             }
-            const mediaType = sniffMediaType(picture.base64, picture.mediaType)
+            const { base64, mediaType } = imageData(picture.base64, picture.mediaType)
             return done(
               await nxt.assets.create({
-                base64: picture.base64,
+                base64,
                 mediaType,
                 name: `generated-image.${EXTENSIONS[mediaType] ?? 'png'}`,
               }),
