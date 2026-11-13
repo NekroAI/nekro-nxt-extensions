@@ -5,7 +5,7 @@
   "description": "按描述画图或改图，返回图片供智能体发送。支持 OpenAI 兼容与 Gemini 接口的画图服务，默认预设 NekroAPI；使用你自己的 API Key，按服务商计费。",
   "createdAt": 1791378000000,
   "requires": {
-    "sdk": 14
+    "sdk": 16
   },
   "permissions": {
     "permissions": [],
@@ -13,7 +13,8 @@
     "host": {
       "network": {
         "mode": "unrestricted",
-        "purpose": "访问你配置的画图服务；有的服务把生成的图片放在别的域名下，需要从那里下载。"
+        "purpose": "访问你配置的画图服务；有的服务把生成的图片放在别的域名下，需要从那里下载。",
+        "fields": ["endpoint"]
       }
     },
     "agent": {

@@ -597,7 +597,7 @@ export default defineHostExtension(async ({ harness, nxt: host }) => ({
             })
             if ('url' in picture) {
               // 优先请求 b64；服务仍只给网址时由宿主下载成 Asset。扩展有任意网络访问权限，
-              // 图片放在别的域名下（如火山 TOS、imgen.x.ai）也能下载；本机与私网地址由宿主拦截（配置里的服务地址除外，需要新版宿主）。
+              // 图片放在别的域名下（如火山 TOS、imgen.x.ai）也能下载；本机与私网地址由宿主拦截，只有「服务地址」里用户填写的地址例外（network.fields，SDK 16）。
               try {
                 return done(await nxt.assets.fromUrl(picture.url, { name: 'generated-image' }))
               } catch (error) {

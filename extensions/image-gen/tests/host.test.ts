@@ -256,7 +256,7 @@ describe('图片生成', () => {
         assetId: 'ast_1',
       })
       expect(host.calls[1]).toMatchObject({ target: 'https://imgen.example.com/fixture.png', input: { fromUrl: true } })
-      expect(definition.permissions.host.network).toMatchObject({ mode: 'unrestricted' })
+      expect(definition.permissions.host.network).toMatchObject({ mode: 'unrestricted', fields: ['endpoint'] })
     })
 
     it('explains a failed download of a generated picture', async () => {
