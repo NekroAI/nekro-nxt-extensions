@@ -36,6 +36,7 @@ describe('条目信息', () => {
       'dice',
       'festival',
       'group-admin',
+      'image-gen',
       'message-guard',
       'rss',
       'stickers',

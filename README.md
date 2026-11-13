@@ -13,7 +13,7 @@
 | [掷骰与抽签](extensions/dice)            | 骰子表达式、百分骰检定、随机抽签                 | 最小的纯工具扩展                                             |
 | [网页搜索](extensions/web-search)        | 搜索网络并给出来源（博查、Tavily、SearXNG）      | 本机配置共用凭据、按配置地址联网、静态提示                   |
 | [网页阅读](extensions/web-reader)        | 读取网页正文并转为 Markdown                      | 任意公网访问、网页解析服务                                   |
-| [图片生成](extensions/image-gen)         | 用 OpenAI 兼容接口生成图片                       | 本机与智能体两层配置、生成 Asset 交给智能体发送              |
+| [图片生成](extensions/image-gen)         | 按描述画图、参照图片改图（默认预设 NekroAPI）    | 按模型选接口、读取参考图、生成 Asset 交给智能体发送          |
 | [语音合成](extensions/tts)               | 把文字转成语音消息                               | 本机与智能体两层配置、音频 Asset                             |
 | [今日运势](extensions/daily-fortune)     | 每日运势卡片与连续签到                           | 成员作用域存储、SVG 渲染                                     |
 | [节日提醒](extensions/festival)          | 节日当天提醒智能体问候，查询近期节日             | Manifest 固定定时任务、到期处理 `onJob`                      |

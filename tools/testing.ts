@@ -71,12 +71,16 @@ export interface TestHostOptions {
   readonly indexWeights?: Readonly<Record<string, Readonly<Record<string, number>>>>
   /** 返回一段文字时 `index.query()` 以它为错误抛出，用来测试检索不可用时的退路。 */
   readonly indexQueryError?: () => string | undefined
+  /** `assets.fromUrl` 的替身：返回下载到的内容；抛错模拟网络权限拒绝等失败。 */
+  readonly fromUrl?: (url: string) => { readonly base64: string; readonly mediaType: string }
 }
 
 /** 测试中的一张图片：在哪些频道可见、宿主返回的图片信息。 */
 export interface TestPicture {
   readonly channels: readonly string[]
   readonly info?: Partial<NxtImageInfo>
+  /** `assets.read` 读到的内容；不给时读取会报错，模拟宿主读不到这张图。 */
+  readonly base64?: string
 }
 
 export interface RecordedCall {
@@ -129,18 +133,44 @@ export const createTestHost = async (
   const jobs = new Map<string, NxtJobRecord & { payload?: ExtensionJsonValue }>()
   const calls: RecordedCall[] = []
   let context: NxtCallContext = { ...DEFAULT_CONTEXT, ...options.context }
-  const pictures = new Map<string, { channels: Set<string>; info: NxtImageInfo }>()
+  const pictures = new Map<string, { channels: Set<string>; info: NxtImageInfo; base64?: string }>()
   const library = new Map<string, NxtLibraryAsset>()
   const indexed = new Map<string, { fields: Readonly<Record<string, string>>; filters: NxtIndexCondition[] }>()
   const modelCalls: NxtModelRequest[] = []
+  const progress: string[] = []
 
   const unsupported = (what: string) => () =>
     Promise.reject(new Error(`测试宿主没有提供 ${what}，请在 createTestHost 中传入。`))
+
+  // 工作文件、媒体处理、命令与语音没有内存替身：任何调用都报错，提醒测试改为显式提供。
+  const unsupportedService = <Service extends object>(what: string): Service =>
+    new Proxy({} as Service, {
+      get: (_target, method) => unsupported(`${what}.${String(method)}`),
+    })
+  const unsupportedServices = {
+    files: unsupportedService<NxtHostService['files']>('files'),
+    media: unsupportedService<NxtHostService['media']>('media'),
+    commands: unsupportedService<NxtHostService['commands']>('commands'),
+    speech: unsupportedService<NxtHostService['speech']>('speech'),
+  }
 
   const pictureInfo = (assetId: string): NxtImageInfo => {
     const picture = pictures.get(assetId)
     if (!picture) throw new Error(`找不到资源 ${assetId}。`)
     return picture.info
+  }
+  // 按真实宿主的分块读取：每次最多 4 MiB，读到末尾时 eof 为 true。
+  const readPicture = (assetId: string, offset: number, length = 4 * 1024 * 1024) => {
+    const picture = pictures.get(assetId)
+    if (picture?.base64 === undefined) throw new Error(`测试宿主读不到资源 ${assetId} 的内容。`)
+    const bytes = Buffer.from(picture.base64, 'base64')
+    const chunk = bytes.subarray(offset, offset + Math.min(length, 4 * 1024 * 1024))
+    return {
+      base64: chunk.toString('base64'),
+      eof: offset + chunk.length >= bytes.length,
+      byteSize: bytes.length,
+      mediaType: picture.info.mediaType,
+    }
   }
   const visibleHere = (assetId: string) => pictures.get(assetId)?.channels.has(context.channel.id) === true
   const libraryRecord = (assetId: string): NxtLibraryAsset => {
@@ -194,6 +224,7 @@ export const createTestHost = async (
   }
 
   const nxt: NxtHostService = {
+    ...unsupportedServices,
     config: () => config,
     members: { describe: async () => undefined },
     http: {
@@ -215,7 +246,22 @@ export const createTestHost = async (
         assets.push({ ...record, ...input })
         return record
       },
-      fromUrl: unsupported('assets.fromUrl'),
+      fromUrl: async (url, fromUrlOptions) => {
+        calls.push({ kind: 'fetch', target: url, input: { fromUrl: true } })
+        if (!options.fromUrl) throw new Error(`测试宿主没有提供 assets.fromUrl：${url}`)
+        const downloaded = options.fromUrl(url)
+        const record = {
+          assetId: `ast_${assets.length + 1}`,
+          mediaType: downloaded.mediaType,
+          byteSize: Math.floor((downloaded.base64.length * 3) / 4),
+        }
+        assets.push({
+          ...record,
+          base64: downloaded.base64,
+          ...(fromUrlOptions?.name ? { name: fromUrlOptions.name } : {}),
+        })
+        return record
+      },
       keep: async (assetId) => {
         if (!visibleHere(assetId)) throw new Error(`资源 ${assetId} 不在当前频道里，不能收进资源库。`)
         const record = library.get(assetId) ?? libraryRecord(assetId)
@@ -228,6 +274,17 @@ export const createTestHost = async (
         if (!record) throw new Error(`资源 ${assetId} 不在这个扩展的资源库里。`)
         pictures.get(assetId)?.channels.add(context.channel.id)
         return { assetId, byteSize: record.byteSize, mediaType: record.mediaType }
+      },
+      read: async (assetId, range) => {
+        if (!visibleHere(assetId) && !library.has(assetId))
+          throw new Error(`资源 ${assetId} 不在当前频道或扩展资源库里。`)
+        return readPicture(assetId, range?.offset ?? 0, range?.length)
+      },
+      stat: async (assetId) => {
+        if (!visibleHere(assetId) && !library.has(assetId))
+          throw new Error(`资源 ${assetId} 不在当前频道或扩展资源库里。`)
+        const info = pictureInfo(assetId)
+        return { byteSize: info.byteSize, mediaType: info.mediaType }
       },
     },
     image: {
@@ -321,6 +378,7 @@ export const createTestHost = async (
 
   const shared = { scope: 'shared' } as const
   const hostNxt: NxtHostLayerService = {
+    ...unsupportedServices,
     http: nxt.http,
     secrets: nxt.secrets,
     storage: {
@@ -335,6 +393,15 @@ export const createTestHost = async (
       list: async () => ({ assets: [...library.values()].sort((left, right) => right.addedAt - left.addedAt) }),
       get: async (assetId) => library.get(assetId),
       release: async (assetId) => library.delete(assetId),
+      read: async (assetId, range) => {
+        if (!library.has(assetId)) throw new Error(`资源 ${assetId} 不在扩展资源库里。`)
+        return readPicture(assetId, range?.offset ?? 0, range?.length)
+      },
+      stat: async (assetId) => {
+        if (!library.has(assetId)) throw new Error(`资源 ${assetId} 不在扩展资源库里。`)
+        const info = pictureInfo(assetId)
+        return { byteSize: info.byteSize, mediaType: info.mediaType }
+      },
     },
     image: {
       info: async (assetId) => {
@@ -413,10 +480,13 @@ export const createTestHost = async (
     library,
     indexed,
     modelCalls,
+    /** 工具通过执行上下文报告的进度文字。 */
+    progress,
     /** 让一张图出现在某些频道里（像成员发来的那样）；未给出的图片信息用合理默认值。 */
     addPicture(assetId: string, picture: TestPicture) {
       pictures.set(assetId, {
         channels: new Set(picture.channels),
+        ...(picture.base64 === undefined ? {} : { base64: picture.base64 }),
         info: {
           mediaType: 'image/png',
           width: 240,
@@ -445,7 +515,10 @@ export const createTestHost = async (
     async call(name: string, args: Readonly<Record<string, ExtensionJsonValue>> = {}) {
       const tool = tools.get(name)
       if (!tool) throw new Error(`没有注册工具 ${name}`)
-      const value = await tool.execute(args)
+      const value = await tool.execute(args, {
+        signal: new AbortController().signal,
+        progress: (update) => progress.push(update.text),
+      })
       const blocks = tool.output.render(args, value)
       const text = blocks.map((block) => (block.type === 'text' ? block.text : `[图片 ${block.assetId}]`)).join('\n')
       return { value, text, blocks }

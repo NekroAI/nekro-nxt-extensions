@@ -1,7 +1,11 @@
 {
-  "revisionNumber": 3,
-  "revisionId": "xrv_01M4FEYTW44A96EA6JYR6RBJG8",
-  "payloadDigest": "e5d727a1448a768b2d53377ced96f8ead54707e34933ee572667c953ec9f91bb",
-  "createdAt": 1791520369541,
-  "notes": "迁移到 NekroNXT 扩展格式 V7，需要支持 V7 的 NekroNXT。服务地址、API Key 与模型移到本机配置，安装时填写一次，所有智能体共用；尺寸与质量仍按智能体设置。升级后请在本机配置中重新填写 API Key。"
+  "revisionNumber": 4,
+  "revisionId": "xrv_01M7B13RNWDNP4RBTH7EA9W72D",
+  "payloadDigest": "227a88483db7f4644d5fb47d6399fe3300220f077fa328b8c1f7c1fdf68a5898",
+  "createdAt": 1794592858816,
+  "lineage": {
+    "parent": "xrv_01M4FEYTW44A96EA6JYR6RBJG8",
+    "ancestry": ["xrv_01M4FEYTW44A96EA6JYR6RBJG8"]
+  },
+  "notes": "重新维护并升级：默认预设 NekroAPI，也支持其他 OpenAI 兼容与 Gemini 接口的服务；按模型自动选择调用方式，新增七种画幅和参考图改图。需要 NekroNXT 支持扩展 SDK 14。已安装用户原来的服务地址、模型与尺寸保持不变；升级时需要重新确认权限：网络访问改为任意地址（有的服务把图片放在别的域名下），新增「读取文件」（改图用）。"
 }

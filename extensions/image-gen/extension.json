@@ -2,14 +2,26 @@
   "id": "ext_01M4B6TAC9WQVDC9QEYWZB5QQY",
   "slug": "image-gen",
   "displayName": "图片生成",
-  "description": "调用 OpenAI 兼容服务生成 PNG 图片，返回文件供智能体发送；使用用户自己的 API Key，按服务商计费。",
+  "description": "按描述画图或改图，返回图片供智能体发送。支持 OpenAI 兼容与 Gemini 接口的画图服务，默认预设 NekroAPI；使用你自己的 API Key，按服务商计费。",
   "createdAt": 1791378000000,
-  "requires": { "sdk": 7 },
+  "requires": {
+    "sdk": 14
+  },
   "permissions": {
     "permissions": [],
     "networkOrigins": [],
-    "host": { "network": { "mode": "config", "fields": ["endpoint"] } },
-    "agent": { "assets": { "write": true } }
+    "host": {
+      "network": {
+        "mode": "unrestricted",
+        "purpose": "访问你配置的画图服务；有的服务把生成的图片放在别的域名下，需要从那里下载。"
+      }
+    },
+    "agent": {
+      "assets": {
+        "write": true,
+        "read": true
+      }
+    }
   },
   "config": {
     "host": {
@@ -20,8 +32,8 @@
             "type": "string",
             "meta": {
               "description": "服务地址",
-              "default": "https://api.openai.com/v1",
-              "hint": "填写 API 基础地址，保留 /v1 等路径，不要填写完整生成端点；请选择可信服务并优先使用 HTTPS。"
+              "default": "https://api.nekro.ai/v1",
+              "hint": "默认是 NekroAPI，也可以填任何 OpenAI 兼容或 Gemini 接口的服务：填 API 基础地址并保留 /v1 等路径，不要填完整的生成接口。请选择可信服务并使用 HTTPS。"
             }
           },
           "apiKey": {
@@ -29,15 +41,53 @@
             "meta": {
               "description": "API Key",
               "role": "secret",
-              "hint": "在所选服务商控制台创建，调用费用由此 Key 所属账号承担。"
+              "hint": "在所选服务的控制台创建（用 NekroAPI 时在 https://api.nekro.ai 获取），调用费用由这个 Key 所属账号承担。"
             }
           },
           "model": {
             "type": "string",
             "meta": {
               "description": "模型",
-              "default": "gpt-image-1",
-              "hint": "需为 gpt-image 系列，或兼容 output_format 参数与 1024x1024、1024x1536、1536x1024 尺寸、返回 b64_json 的接口，且当前 Key 有权调用。"
+              "default": "gemini-3.1-flash-image",
+              "hint": "默认 gemini-3.1-flash-image。NekroAPI 上实测可用：gemini-3.1-flash-image、gemini-3-pro-image、gemini-nano-banana-2.1、gpt-image-2.6-flare、gpt-image-2.6-sunburst、doubao-seedream-5-0-260128、grok-imagine-image-2.0（多在 10～20 秒），以及 gpt-image-2（较慢，约一分半）。用其他服务时填它支持的画图模型名。"
+            }
+          },
+          "api": {
+            "type": "union",
+            "list": [
+              {
+                "type": "const",
+                "value": "auto",
+                "meta": {
+                  "description": "自动（按模型选择）"
+                }
+              },
+              {
+                "type": "const",
+                "value": "images",
+                "meta": {
+                  "description": "OpenAI 生图接口（/images/generations）"
+                }
+              },
+              {
+                "type": "const",
+                "value": "chat",
+                "meta": {
+                  "description": "对话接口返回图片（/chat/completions）"
+                }
+              },
+              {
+                "type": "const",
+                "value": "gemini",
+                "meta": {
+                  "description": "Gemini 接口（generateContent）"
+                }
+              }
+            ],
+            "meta": {
+              "description": "调用方式",
+              "default": "auto",
+              "hint": "一般保持自动：内置模型按实测的方式调用，其他模型按名字判断，判断不出时用 OpenAI 生图接口。自动选择出错时再按服务商文档指定。"
             }
           }
         }
@@ -50,23 +100,103 @@
           "size": {
             "type": "union",
             "list": [
-              { "type": "const", "value": "1024x1024" },
-              { "type": "const", "value": "1024x1536" },
-              { "type": "const", "value": "1536x1024" }
+              {
+                "type": "const",
+                "value": "1:1",
+                "meta": {
+                  "description": "方图 1:1"
+                }
+              },
+              {
+                "type": "const",
+                "value": "2:3",
+                "meta": {
+                  "description": "竖图 2:3"
+                }
+              },
+              {
+                "type": "const",
+                "value": "3:2",
+                "meta": {
+                  "description": "横图 3:2"
+                }
+              },
+              {
+                "type": "const",
+                "value": "3:4",
+                "meta": {
+                  "description": "竖图 3:4"
+                }
+              },
+              {
+                "type": "const",
+                "value": "4:3",
+                "meta": {
+                  "description": "横图 4:3"
+                }
+              },
+              {
+                "type": "const",
+                "value": "9:16",
+                "meta": {
+                  "description": "竖屏 9:16"
+                }
+              },
+              {
+                "type": "const",
+                "value": "16:9",
+                "meta": {
+                  "description": "宽屏 16:9"
+                }
+              },
+              {
+                "type": "const",
+                "value": "1024x1024",
+                "meta": {
+                  "description": "1024x1024（旧版设置，等同方图 1:1）"
+                }
+              },
+              {
+                "type": "const",
+                "value": "1024x1536",
+                "meta": {
+                  "description": "1024x1536（旧版设置，等同竖图 2:3）"
+                }
+              },
+              {
+                "type": "const",
+                "value": "1536x1024",
+                "meta": {
+                  "description": "1536x1024（旧版设置，等同横图 3:2）"
+                }
+              }
             ],
-            "meta": { "description": "默认尺寸", "default": "1024x1024" }
+            "meta": {
+              "description": "默认画幅",
+              "default": "1:1",
+              "hint": "智能体没有指定画幅时使用。部分模型只支持 1:1、2:3、3:2，会按最接近的画幅生成。"
+            }
           },
           "quality": {
             "type": "union",
             "list": [
-              { "type": "const", "value": "low" },
-              { "type": "const", "value": "medium" },
-              { "type": "const", "value": "high" }
+              {
+                "type": "const",
+                "value": "low"
+              },
+              {
+                "type": "const",
+                "value": "medium"
+              },
+              {
+                "type": "const",
+                "value": "high"
+              }
             ],
             "meta": {
               "description": "图片质量",
-              "default": "medium",
-              "hint": "质量越高越慢、费用越高；宿主单次请求 30 秒无响应会超时，遇到超时请改用较低质量。"
+              "default": "low",
+              "hint": "质量越高越慢，部分服务也更贵；高质量可能要等一两分钟甚至超时，一般保持 low。只对 GPT Image 和部分 Gemini 模型生效。"
             }
           }
         }
@@ -77,8 +207,10 @@
     {
       "kind": "tool",
       "name": "generate_image",
-      "description": "生成一张 PNG 图片，返回 assetId 供智能体发送",
-      "verificationInput": { "prompt": "" }
+      "description": "按描述生成或修改一张图片，返回 assetId 供智能体发送",
+      "verificationInput": {
+        "prompt": ""
+      }
     }
   ]
 }

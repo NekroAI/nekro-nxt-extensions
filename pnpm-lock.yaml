@@ -9,14 +9,14 @@ importers:
   .:
     devDependencies:
       '@nekro-nxt/contracts':
-        specifier: 0.6.0
-        version: 0.6.0
+        specifier: 0.8.1
+        version: 0.8.1
       '@nekro-nxt/extension-format':
-        specifier: 0.6.0
-        version: 0.6.0
+        specifier: 0.7.2
+        version: 0.7.2
       '@nekro-nxt/extension-sdk':
-        specifier: 0.5.0
-        version: 0.5.0(@types/react@18.3.31)
+        specifier: 0.7.1
+        version: 0.7.1(@types/react@18.3.31)
       '@types/node':
         specifier: ^22.20.5
         version: 22.20.5
@@ -203,14 +203,14 @@ packages:
   '@jridgewell/sourcemap-codec@1.6.0':
     resolution: {integrity: sha512-T7jf+5zgsZHwNJ4lvQ7/aezbyk0nNX+zJVWpmHA7VYsEx7a7qr5Rg5IbtJFqkgze5Y2sruq1RUY8Q837Od7iFw==}
 
-  '@nekro-nxt/contracts@0.6.0':
-    resolution: {integrity: sha512-tzcrZ+T9YwO9twOHUP2Osz9AE7eaCqPhFzfR6WzMFas9KQ5Op3N5CMh6JptI9QTcLmVmp7QJZNC4dC9qvJn5cA==}
+  '@nekro-nxt/contracts@0.8.1':
+    resolution: {integrity: sha512-+BXrQwFNQfJpE2+Arkvyraz/RbGIBMk3yW++OMHlIIQ2qR9/nKI6VgN7KDn+HUijuHVr9+ueIpFVPvjQRnOAmQ==}
 
-  '@nekro-nxt/extension-format@0.6.0':
-    resolution: {integrity: sha512-N2RFa7z0iiucGXYqZWw3QjrX9cqL+UmPCwG6l5Veqys97Hqk0qmGEIRIGBopV+3Xs9JxJgKFSqmWBimskDHmrg==}
+  '@nekro-nxt/extension-format@0.7.2':
+    resolution: {integrity: sha512-goWtSJdZE1k6hg8GJEbHKo2rL9NHYBS3sTvaEKcZuBG9wCfv2EKegy7fAt0zE1AVwFrJ5hUNYJZLWtLk8knsRA==}
 
-  '@nekro-nxt/extension-sdk@0.5.0':
-    resolution: {integrity: sha512-l5zc1WqxGAN/uxlXxFPv7i72EgEyOpeGIKi8bZJUbragyaAVzOEHsfzmUHJdpU2apMc0+X4nc8y8HW6NHjw54w==}
+  '@nekro-nxt/extension-sdk@0.7.1':
+    resolution: {integrity: sha512-YQnDlVSGOkhkAQ0FF5aSNpcFqQIQUp3QXXSTUDgfE575axDsy+LjX7HFgwcXVgd+xga7LI3YlSj8be0xu8d7FQ==}
     peerDependencies:
       '@types/react': '>=18'
     peerDependenciesMeta:
@@ -752,21 +752,21 @@ snapshots:
 
   '@jridgewell/sourcemap-codec@1.6.0': {}
 
-  '@nekro-nxt/contracts@0.6.0':
+  '@nekro-nxt/contracts@0.8.1':
     dependencies:
       zod: 4.4.3
 
-  '@nekro-nxt/extension-format@0.6.0':
+  '@nekro-nxt/extension-format@0.7.2':
     dependencies:
-      '@nekro-nxt/contracts': 0.6.0
+      '@nekro-nxt/contracts': 0.8.1
       '@noble/hashes': 2.3.0
       fflate: 0.8.3
       postcss: 8.5.26
       zod: 4.4.3
 
-  '@nekro-nxt/extension-sdk@0.5.0(@types/react@18.3.31)':
+  '@nekro-nxt/extension-sdk@0.7.1(@types/react@18.3.31)':
     dependencies:
-      '@nekro-nxt/contracts': 0.6.0
+      '@nekro-nxt/contracts': 0.8.1
       zod: 4.4.3
     optionalDependencies:
       '@types/react': 18.3.31

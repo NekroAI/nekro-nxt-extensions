@@ -1,12 +1,41 @@
 import { describe, expect, it, vi } from 'vitest'
-import { createTestHost, respond } from '../../../tools/testing.js'
+import { ConfigSchemaDocumentSchema, validateConfigValue } from '@nekro-nxt/contracts'
+import type { NxtFetchInit } from '@nekro-nxt/extension-sdk'
+import { createTestHost, respond, type FetchHandler } from '../../../tools/testing.js'
 import factory from '../src/host.js'
 import definition from '../extension.json' with { type: 'json' }
 
-// 虚构的一像素 PNG，测试不会调用真实服务。
+// 虚构的图片数据，测试不会调用真实服务。
 const png = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aV2kAAAAASUVORK5CYII='
+const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0, 0x10, 0x4a, 0x46, 0x49, 0x46, 0, 1]).toString('base64')
 const secrets = { apiKey: 'sk-fixture' }
-const success = () => respond({ data: [{ b64_json: png }] })
+const nekro = 'https://api.nekro.ai/v1'
+
+const bodyOf = (init: unknown) => JSON.parse((init as NxtFetchInit).body ?? '') as Record<string, unknown>
+const headersOf = (init: unknown) => (init as NxtFetchInit).headers ?? {}
+const imagesOk: FetchHandler = () => respond({ data: [{ b64_json: png }] })
+const geminiOk: FetchHandler = () =>
+  respond({
+    candidates: [
+      {
+        content: {
+          parts: [
+            { text: '草稿', thought: true },
+            { inlineData: { mimeType: 'image/png', data: png }, thought: true },
+            { text: '好的，这是图片。' },
+            { inlineData: { mimeType: 'image/jpeg', data: jpeg } },
+          ],
+        },
+        finishReason: 'STOP',
+      },
+    ],
+  })
+
+const hostSchema = ConfigSchemaDocumentSchema.parse(definition.config.host.schema)
+const agentSchema = ConfigSchemaDocumentSchema.parse(definition.config.agent.schema)
+/** 宿主升级时的规则：旧配置（去掉凭据字段）通过新 schema 校验才原样保留，否则整体重置为默认值。 */
+const carry = (schema: typeof hostSchema, previous: Record<string, string>) =>
+  validateConfigValue(schema, previous, { skipKeys: ['apiKey'] })
 
 describe('图片生成', () => {
   it('never bills verification samples even with credentials', async () => {
@@ -25,46 +54,499 @@ describe('图片生成', () => {
     }
   })
 
-  it('uses default settings, sends one PNG request and returns an asset', async () => {
-    const host = await createTestHost(factory, { secrets, fetch: success })
-    const { value, text } = await host.call('generate_image', { prompt: ' 虚构狐狸 ' })
-    expect(host.calls[0]).toMatchObject({
-      target: 'https://api.openai.com/v1/images/generations',
-      input: { method: 'POST', headers: { authorization: 'Bearer sk-fixture' } },
+  describe('默认预设：NekroAPI 与 Gemini 接口', () => {
+    it('sends a generateContent request with the ratio and a 1K size', async () => {
+      const host = await createTestHost(factory, { secrets, fetch: geminiOk })
+      const { value, text } = await host.call('generate_image', { prompt: ' 虚构狐狸 ' })
+      const call = host.calls[0]!
+      expect(call.target).toBe('https://api.nekro.ai/v1beta/models/gemini-3.1-flash-image:generateContent')
+      expect(headersOf(call.input)).toMatchObject({
+        authorization: 'Bearer sk-fixture',
+        'x-goog-api-key': 'sk-fixture',
+      })
+      expect((call.input as NxtFetchInit).timeoutMs).toBe(180_000)
+      expect(bodyOf(call.input)).toEqual({
+        contents: [{ role: 'user', parts: [{ text: '虚构狐狸' }] }],
+        generationConfig: {
+          responseModalities: ['TEXT', 'IMAGE'],
+          imageConfig: { aspectRatio: '1:1' },
+        },
+      })
+      // 跳过思考草稿，取最终图片，并按文件头识别格式。
+      expect(host.assets).toEqual([
+        expect.objectContaining({
+          assetId: 'ast_1',
+          base64: jpeg,
+          mediaType: 'image/jpeg',
+          name: 'generated-image.jpg',
+        }),
+      ])
+      expect(value).toEqual({
+        ok: true,
+        assetId: 'ast_1',
+        mediaType: 'image/jpeg',
+        model: 'gemini-3.1-flash-image',
+        aspectRatio: '1:1',
+      })
+      expect(text).toContain('send_channel_message 的 image')
+      expect(text).not.toContain(jpeg)
+      expect(text).not.toContain('sk-fixture')
+      expect(host.progress).toEqual(['正在用 gemini-3.1-flash-image 生成图片'])
     })
-    expect(JSON.parse((host.calls[0]?.input as { body: string }).body)).toEqual({
-      model: 'gpt-image-1',
-      prompt: '虚构狐狸',
-      size: '1024x1024',
-      quality: 'medium',
-      n: 1,
-      output_format: 'png',
+
+    it('uses the ratio argument, the high-quality size and omits imageSize for models without it', async () => {
+      const pro = await createTestHost(factory, {
+        secrets,
+        hostConfig: { model: 'gemini-3-pro-image' },
+        config: { quality: 'high', size: '9:16' },
+        fetch: geminiOk,
+      })
+      await pro.call('generate_image', { prompt: '示例' })
+      await pro.call('generate_image', { prompt: '示例', aspect_ratio: '4:3' })
+      expect(bodyOf(pro.calls[0]!.input)['generationConfig']).toMatchObject({
+        imageConfig: { aspectRatio: '9:16', imageSize: '2K' },
+      })
+      expect(bodyOf(pro.calls[1]!.input)['generationConfig']).toMatchObject({ imageConfig: { aspectRatio: '4:3' } })
+      const banana = await createTestHost(factory, {
+        secrets,
+        hostConfig: { model: 'gemini-nano-banana-2.1' },
+        fetch: geminiOk,
+      })
+      await banana.call('generate_image', { prompt: '示例' })
+      expect(bodyOf(banana.calls[0]!.input)['generationConfig']).toEqual({
+        responseModalities: ['TEXT', 'IMAGE'],
+        imageConfig: { aspectRatio: '1:1' },
+      })
     })
-    expect(host.assets).toEqual([
-      expect.objectContaining({ assetId: 'ast_1', base64: png, mediaType: 'image/png', name: 'generated-image.png' }),
-    ])
-    expect(value).toEqual({ ok: true, assetId: 'ast_1', mediaType: 'image/png', size: '1024x1024' })
-    expect(text).toContain('send_channel_message 的 image')
-    expect(text).not.toContain(png)
-    expect(text).not.toContain('sk-fixture')
+
+    it('explains a text-only or blocked reply', async () => {
+      const host = await createTestHost(factory, {
+        secrets,
+        fetch: () =>
+          respond({ candidates: [{ content: { parts: [{ text: '无法生成这类内容' }] }, finishReason: 'SAFETY' }] }),
+      })
+      expect((await host.call('generate_image', { prompt: '示例' })).text).toBe(
+        '图片服务没有返回图片，只回复了文字：无法生成这类内容（SAFETY）',
+      )
+      expect(host.assets).toEqual([])
+    })
   })
 
-  it('preserves base paths and respects configured size and overrides', async () => {
-    const host = await createTestHost(factory, {
-      secrets,
-      hostConfig: { endpoint: 'https://images.example.com/proxy/v1///', model: 'fixture-image' },
-      config: { size: '1024x1536', quality: 'high' },
-      fetch: success,
+  describe('OpenAI 生图接口', () => {
+    it('asks GPT Image for b64 and maps ratios to supported sizes', async () => {
+      const host = await createTestHost(factory, {
+        secrets,
+        hostConfig: { model: 'gpt-image-2' },
+        config: { quality: 'medium' },
+        fetch: imagesOk,
+      })
+      const square = await host.call('generate_image', { prompt: '示例' })
+      expect(host.calls[0]!.target).toBe(`${nekro}/images/generations`)
+      expect(bodyOf(host.calls[0]!.input)).toEqual({
+        model: 'gpt-image-2',
+        prompt: '示例',
+        n: 1,
+        size: '1024x1024',
+        quality: 'medium',
+        response_format: 'b64_json',
+      })
+      expect(square.value).toMatchObject({ ok: true, mediaType: 'image/png', aspectRatio: '1:1' })
+      expect(square.text).not.toContain('最接近')
+      const wide = await host.call('generate_image', { prompt: '示例', aspect_ratio: '16:9' })
+      expect(bodyOf(host.calls[1]!.input)).toMatchObject({ size: '1536x1024' })
+      expect(wide.text).toContain('已按最接近的 3:2 生成')
     })
-    expect((await host.call('generate_image', { prompt: '示例' })).value).toMatchObject({ size: '1024x1536' })
-    expect((await host.call('generate_image', { prompt: '示例', size: '1536x1024' })).value).toMatchObject({
-      size: '1536x1024',
+
+    it('retries once without response_format when the service rejects it, then downloads a same-host URL', async () => {
+      const replies = [
+        respond({ error: { message: "Unknown parameter: 'response_format'." } }, { status: 400 }),
+        respond({ data: [{ url: 'https://api.nekro.ai/files/fixture.png' }] }),
+      ]
+      const host = await createTestHost(factory, {
+        secrets,
+        hostConfig: { model: 'gpt-image-2' },
+        fetch: () => replies.shift()!,
+        fromUrl: () => ({ base64: png, mediaType: 'image/png' }),
+      })
+      expect((await host.call('generate_image', { prompt: '示例' })).value).toMatchObject({ ok: true })
+      expect(bodyOf(host.calls[0]!.input)).toMatchObject({ response_format: 'b64_json' })
+      expect(bodyOf(host.calls[1]!.input)).not.toHaveProperty('response_format')
+      expect(host.calls[2]).toMatchObject({ target: 'https://api.nekro.ai/files/fixture.png' })
     })
-    expect(host.calls[0]?.target).toBe('https://images.example.com/proxy/v1/images/generations')
-    expect(JSON.parse((host.calls[1]?.input as { body: string }).body)).toMatchObject({
-      model: 'fixture-image',
-      size: '1536x1024',
-      quality: 'high',
+
+    it('does not retry other client errors', async () => {
+      const host = await createTestHost(factory, {
+        secrets,
+        hostConfig: { model: 'gpt-image-2' },
+        fetch: () => respond({ error: { message: 'invalid size' } }, { status: 400 }),
+      })
+      expect((await host.call('generate_image', { prompt: '示例' })).text).toContain('HTTP 400：invalid size')
+      expect(host.calls).toHaveLength(1)
+    })
+
+    it('keeps only the first picture when the service returns more than asked', async () => {
+      const host = await createTestHost(factory, {
+        secrets,
+        hostConfig: { model: 'gpt-image-2' },
+        fetch: () => respond({ data: [{ b64_json: png }, { b64_json: jpeg }] }),
+      })
+      await host.call('generate_image', { prompt: '示例' })
+      expect(host.assets).toEqual([expect.objectContaining({ base64: png, mediaType: 'image/png' })])
+    })
+
+    it('asks Seedream for b64 at a 2K size', async () => {
+      const host = await createTestHost(factory, {
+        secrets,
+        hostConfig: { model: 'doubao-seedream-5-0-260128' },
+        fetch: () => respond({ data: [{ b64_json: jpeg }] }),
+      })
+      expect((await host.call('generate_image', { prompt: '示例', aspect_ratio: '3:4' })).value).toMatchObject({
+        ok: true,
+        mediaType: 'image/jpeg',
+      })
+      expect(bodyOf(host.calls[0]!.input)).toEqual({
+        model: 'doubao-seedream-5-0-260128',
+        prompt: '示例',
+        n: 1,
+        size: '1728x2304',
+        response_format: 'b64_json',
+      })
+    })
+
+    it('writes the ratio into the prompt for models without a size parameter', async () => {
+      const host = await createTestHost(factory, {
+        secrets,
+        hostConfig: { model: 'grok-imagine-image-2.0' },
+        fetch: imagesOk,
+      })
+      await host.call('generate_image', { prompt: '示例', aspect_ratio: '16:9' })
+      expect(bodyOf(host.calls[0]!.input)).toEqual({
+        model: 'grok-imagine-image-2.0',
+        prompt: '示例\n\n画幅：横版 16:9。',
+        n: 1,
+        response_format: 'b64_json',
+      })
+    })
+
+    it('downloads a URL result on the service host into an Asset', async () => {
+      const host = await createTestHost(factory, {
+        secrets,
+        hostConfig: { model: 'doubao-seedream-5-0-260128' },
+        fetch: () => respond({ data: [{ url: 'https://api.nekro.ai/files/fixture.jpeg' }] }),
+        fromUrl: () => ({ base64: jpeg, mediaType: 'image/jpeg' }),
+      })
+      const { value } = await host.call('generate_image', { prompt: '示例' })
+      expect(value).toMatchObject({ ok: true, assetId: 'ast_1', mediaType: 'image/jpeg' })
+      expect(host.calls[1]).toMatchObject({
+        target: 'https://api.nekro.ai/files/fixture.jpeg',
+        input: { fromUrl: true },
+      })
+      expect(host.assets[0]).toMatchObject({ base64: jpeg, name: 'generated-image' })
+    })
+
+    it('downloads a URL result on another domain, which the network permission covers', async () => {
+      const host = await createTestHost(factory, {
+        secrets,
+        hostConfig: { model: 'grok-imagine-image-2.0' },
+        fetch: () => respond({ data: [{ url: 'https://imgen.example.com/fixture.png' }] }),
+        fromUrl: () => ({ base64: png, mediaType: 'image/png' }),
+      })
+      expect((await host.call('generate_image', { prompt: '示例' })).value).toMatchObject({
+        ok: true,
+        assetId: 'ast_1',
+      })
+      expect(host.calls[1]).toMatchObject({ target: 'https://imgen.example.com/fixture.png', input: { fromUrl: true } })
+      expect(definition.permissions.host.network).toMatchObject({ mode: 'unrestricted' })
+    })
+
+    it('explains a failed download of a generated picture', async () => {
+      const host = await createTestHost(factory, {
+        secrets,
+        hostConfig: { model: 'grok-imagine-image-2.0' },
+        fetch: () => respond({ data: [{ url: 'https://imgen.example.com/fixture.png' }] }),
+        fromUrl: () => {
+          throw new Error('HTTP 404')
+        },
+      })
+      const { text } = await host.call('generate_image', { prompt: '示例' })
+      expect(text).toBe('图片已生成，但下载失败：HTTP 404。这次生成可能已经计费，重试前请先确认。')
+      expect(host.assets).toEqual([])
+    })
+  })
+
+  describe('对话接口返回图片', () => {
+    const chat =
+      (content: unknown, extra: Record<string, unknown> = {}): FetchHandler =>
+      () =>
+        respond({ choices: [{ message: { role: 'assistant', content, ...extra } }] })
+
+    it.each([
+      ['Markdown data URL', chat(`好的：\n![图](data:image/png;base64,${png})`), png],
+      ['bare data URL', chat(`data:image/jpeg;base64,${jpeg}`), jpeg],
+      ['content parts', chat([{ type: 'image_url', image_url: { url: `data:image/png;base64,${png}` } }]), png],
+      [
+        'images field',
+        chat('', { images: [{ type: 'image_url', image_url: { url: `data:image/jpeg;base64,${jpeg}` } }] }),
+        jpeg,
+      ],
+    ])('saves the picture from a %s', async (_label, fetch, expected) => {
+      const host = await createTestHost(factory, {
+        secrets,
+        hostConfig: { endpoint: 'https://llm.example.com/v1', model: 'fixture-chat-image', api: 'chat' },
+        fetch,
+      })
+      const { value } = await host.call('generate_image', { prompt: '示例', aspect_ratio: '2:3' })
+      expect(value).toMatchObject({ ok: true, model: 'fixture-chat-image' })
+      expect(host.assets[0]).toMatchObject({ base64: expected })
+      expect(host.calls[0]!.target).toBe('https://llm.example.com/v1/chat/completions')
+      expect(bodyOf(host.calls[0]!.input)).toEqual({
+        model: 'fixture-chat-image',
+        stream: false,
+        messages: [{ role: 'user', content: [{ type: 'text', text: '示例\n\n画幅：竖版 2:3。只输出一张图片。' }] }],
+      })
+    })
+
+    it('downloads a Markdown image link and reports a text-only reply', async () => {
+      const linked = await createTestHost(factory, {
+        secrets,
+        hostConfig: { endpoint: 'https://llm.example.com/v1', model: 'fixture-chat-image', api: 'chat' },
+        fetch: chat('![结果](https://llm.example.com/out/fixture.png)'),
+        fromUrl: () => ({ base64: png, mediaType: 'image/png' }),
+      })
+      expect((await linked.call('generate_image', { prompt: '示例' })).value).toMatchObject({ ok: true })
+      expect(linked.calls[1]!.target).toBe('https://llm.example.com/out/fixture.png')
+      const refused = await createTestHost(factory, {
+        secrets,
+        hostConfig: { endpoint: 'https://llm.example.com/v1', model: 'fixture-chat-image', api: 'chat' },
+        fetch: chat('抱歉，我只能回答文字问题。'),
+      })
+      expect((await refused.call('generate_image', { prompt: '示例' })).text).toContain('只回复了文字：抱歉')
+    })
+  })
+
+  describe('其他 OpenAI 兼容或 Gemini 服务', () => {
+    it('keeps base paths and infers the interface from the model name', async () => {
+      const cases: [string, string][] = [
+        ['fixture-gemini-image', 'https://images.example.com/proxy/v1beta/models/fixture-gemini-image:generateContent'],
+        ['fixture-banana', 'https://images.example.com/proxy/v1beta/models/fixture-banana:generateContent'],
+        ['gpt-image-9', 'https://images.example.com/proxy/v1/images/generations'],
+        ['fixture-flux', 'https://images.example.com/proxy/v1/images/generations'],
+      ]
+      for (const [model, target] of cases) {
+        const host = await createTestHost(factory, {
+          secrets,
+          hostConfig: { endpoint: 'https://images.example.com/proxy/v1///', model },
+          fetch: (url, init) => (url.includes('generateContent') ? geminiOk(url, init) : imagesOk(url, init)),
+        })
+        expect((await host.call('generate_image', { prompt: '示例' })).value).toMatchObject({ ok: true, model })
+        expect(host.calls[0]!.target).toBe(target)
+      }
+    })
+
+    it('falls back to the OpenAI images interface with b64 for unknown models', async () => {
+      const host = await createTestHost(factory, {
+        secrets,
+        hostConfig: { endpoint: 'https://images.example.com/v1', model: 'fixture-image' },
+        fetch: imagesOk,
+      })
+      await host.call('generate_image', { prompt: '示例' })
+      expect(bodyOf(host.calls[0]!.input)).toEqual({
+        model: 'fixture-image',
+        prompt: '示例',
+        n: 1,
+        size: '1024x1024',
+        response_format: 'b64_json',
+      })
+    })
+
+    it('honours an explicit interface choice', async () => {
+      const host = await createTestHost(factory, {
+        secrets,
+        hostConfig: { endpoint: 'https://images.example.com/v1', model: 'fixture-gemini-image', api: 'images' },
+        fetch: imagesOk,
+      })
+      await host.call('generate_image', { prompt: '示例' })
+      expect(host.calls[0]!.target).toBe('https://images.example.com/v1/images/generations')
+      const gemini = await createTestHost(factory, {
+        secrets,
+        hostConfig: { endpoint: 'https://images.example.com', model: 'fixture-image', api: 'gemini' },
+        fetch: geminiOk,
+      })
+      await gemini.call('generate_image', { prompt: '示例' })
+      expect(gemini.calls[0]!.target).toBe('https://images.example.com/v1beta/models/fixture-image:generateContent')
+    })
+
+    it('falls back to the default model when it is blank', async () => {
+      const host = await createTestHost(factory, { secrets, hostConfig: { model: ' ' }, fetch: geminiOk })
+      await host.call('generate_image', { prompt: '示例' })
+      expect(host.calls[0]!.target).toContain('gemini-3.1-flash-image:generateContent')
+    })
+  })
+
+  describe('参考图与改图', () => {
+    const withPictures = async (model: string, fetch: FetchHandler) => {
+      const host = await createTestHost(factory, { secrets, hostConfig: { model }, fetch })
+      host.addPicture('ast_ref1', { channels: ['chn_TEST'], base64: png })
+      host.addPicture('ast_ref2', { channels: ['chn_TEST'], base64: jpeg, info: { mediaType: 'image/jpeg' } })
+      return host
+    }
+
+    it('sends reference pictures to Gemini as inlineData', async () => {
+      const host = await withPictures('gemini-3.1-flash-image', geminiOk)
+      const { value } = await host.call('generate_image', {
+        prompt: '把背景换成海边',
+        reference_images: ['ast_ref1', 'ast_ref2', 'ast_ref1'],
+      })
+      expect(value).toMatchObject({ ok: true })
+      expect(bodyOf(host.calls[0]!.input)['contents']).toEqual([
+        {
+          role: 'user',
+          parts: [
+            { text: '把背景换成海边' },
+            { inlineData: { mimeType: 'image/png', data: png } },
+            { inlineData: { mimeType: 'image/jpeg', data: jpeg } },
+          ],
+        },
+      ])
+    })
+
+    it('uploads reference pictures to the GPT Image edits endpoint as multipart', async () => {
+      const host = await withPictures('gpt-image-2', imagesOk)
+      await host.call('generate_image', { prompt: '加一顶帽子', reference_images: ['ast_ref1', 'ast_ref2'] })
+      const call = host.calls[0]!
+      expect(call.target).toBe(`${nekro}/images/edits`)
+      const contentType = headersOf(call.input)['content-type']!
+      expect(contentType).toMatch(/^multipart\/form-data; boundary=/u)
+      const boundary = contentType.split('boundary=')[1]!
+      const raw = Buffer.from((call.input as NxtFetchInit).bodyBase64!, 'base64')
+      const text = raw.toString('latin1')
+      expect(text).toContain(`--${boundary}\r\nContent-Disposition: form-data; name="model"\r\n\r\ngpt-image-2\r\n`)
+      expect(raw.toString('utf8')).toContain('name="prompt"\r\n\r\n加一顶帽子\r\n')
+      expect(text).toContain('name="image[]"; filename="reference-1.png"\r\nContent-Type: image/png')
+      expect(text).toContain('name="image[]"; filename="reference-2.jpg"\r\nContent-Type: image/jpeg')
+      expect(raw.includes(Buffer.from(png, 'base64'))).toBe(true)
+      expect(text.endsWith(`--${boundary}--\r\n`)).toBe(true)
+      expect((call.input as NxtFetchInit).body).toBeUndefined()
+    })
+
+    it('uses a single image field for one reference picture', async () => {
+      const host = await withPictures('gpt-image-2', imagesOk)
+      await host.call('generate_image', { prompt: '加一顶帽子', reference_images: ['ast_ref1'] })
+      const text = Buffer.from((host.calls[0]!.input as NxtFetchInit).bodyBase64!, 'base64').toString('latin1')
+      expect(text).toContain('name="image"; filename="reference-1.png"')
+    })
+
+    it('passes Seedream references as data URLs and the chat interface as image parts', async () => {
+      const seedream = await withPictures('doubao-seedream-5-0-260128', imagesOk)
+      await seedream.call('generate_image', { prompt: '示例', reference_images: ['ast_ref2'] })
+      expect(seedream.calls[0]!.target).toBe(`${nekro}/images/generations`)
+      expect(bodyOf(seedream.calls[0]!.input)['image']).toBe(`data:image/jpeg;base64,${jpeg}`)
+      await seedream.call('generate_image', { prompt: '示例', reference_images: ['ast_ref1', 'ast_ref2'] })
+      expect(bodyOf(seedream.calls[1]!.input)['image']).toEqual([
+        `data:image/png;base64,${png}`,
+        `data:image/jpeg;base64,${jpeg}`,
+      ])
+      const chat = await createTestHost(factory, {
+        secrets,
+        hostConfig: { endpoint: 'https://llm.example.com/v1', model: 'fixture', api: 'chat' },
+        fetch: () => respond({ choices: [{ message: { content: `![](data:image/png;base64,${png})` } }] }),
+      })
+      chat.addPicture('ast_ref1', { channels: ['chn_TEST'], base64: png })
+      await chat.call('generate_image', { prompt: '示例', reference_images: ['ast_ref1'] })
+      expect(bodyOf(chat.calls[0]!.input)['messages']).toEqual([
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: '示例\n\n画幅：方形 1:1。只输出一张图片。' },
+            { type: 'image_url', image_url: { url: `data:image/png;base64,${png}` } },
+          ],
+        },
+      ])
+    })
+
+    it('sends Grok Imagine references to the edits endpoint', async () => {
+      const host = await withPictures('grok-imagine-image-2.0', imagesOk)
+      await host.call('generate_image', { prompt: '示例', reference_images: ['ast_ref1'] })
+      expect(host.calls[0]!.target).toBe(`${nekro}/images/edits`)
+      const text = Buffer.from((host.calls[0]!.input as NxtFetchInit).bodyBase64!, 'base64').toString('latin1')
+      expect(text).toContain('name="response_format"\r\n\r\nb64_json\r\n')
+      expect(text).toContain('name="image"; filename="reference-1.png"')
+    })
+
+    it('explains unreadable, non-image or oversized references without billing', async () => {
+      const host = await withPictures('gemini-3.1-flash-image', geminiOk)
+      host.addPicture('ast_doc', { channels: ['chn_TEST'], base64: png, info: { mediaType: 'application/pdf' } })
+      host.addPicture('ast_other', { channels: ['chn_OTHER'], base64: png })
+      expect((await host.call('generate_image', { prompt: '示例', reference_images: ['ast_other'] })).text).toContain(
+        '读不到参考图 ast_other',
+      )
+      expect((await host.call('generate_image', { prompt: '示例', reference_images: ['ast_doc'] })).text).toContain(
+        '不是图片',
+      )
+      vi.spyOn(host.nxt.assets, 'read').mockResolvedValueOnce({
+        base64: png,
+        eof: false,
+        byteSize: 9 * 1024 * 1024,
+        mediaType: 'image/png',
+      })
+      expect((await host.call('generate_image', { prompt: '示例', reference_images: ['ast_ref1'] })).text).toContain(
+        '超过 8 MB',
+      )
+      expect(host.calls).toEqual([])
+    })
+
+    it('reads large references in chunks until eof', async () => {
+      const host = await withPictures('gemini-3.1-flash-image', geminiOk)
+      const bytes = Buffer.alloc(5 * 1024 * 1024, 7)
+      bytes.set([0x89, 0x50, 0x4e, 0x47])
+      host.addPicture('ast_big', { channels: ['chn_TEST'], base64: bytes.toString('base64') })
+      const read = vi.spyOn(host.nxt.assets, 'read')
+      await host.call('generate_image', { prompt: '示例', reference_images: ['ast_big'] })
+      expect(read.mock.calls.map(([, range]) => range?.offset)).toEqual([0, 4 * 1024 * 1024])
+      const contents = bodyOf(host.calls[0]!.input)['contents'] as { parts: { inlineData?: { data: string } }[] }[]
+      expect(contents[0]!.parts[1]!.inlineData!.data).toBe(bytes.toString('base64'))
+    })
+  })
+
+  describe('已安装用户的旧配置', () => {
+    // 旧版安装时宿主按当时的默认值把每个字段都存了下来。
+    const oldHost = { endpoint: 'https://api.openai.com/v1', model: 'gpt-image-1' }
+    const oldAgent = { size: '1024x1536', quality: 'medium' }
+
+    it('stays valid under the new schema, so the host keeps it instead of resetting to defaults', () => {
+      const host = carry(hostSchema, oldHost)
+      const agent = carry(agentSchema, oldAgent)
+      expect(host.issues).toEqual([])
+      expect(agent.issues).toEqual([])
+      expect(host.value).toEqual({ ...oldHost, api: 'auto' })
+      expect(agent.value).toEqual(oldAgent)
+      for (const size of ['1024x1024', '1536x1024'])
+        expect(carry(agentSchema, { size, quality: 'high' }).issues).toEqual([])
+    })
+
+    it('keeps calling the old service and model with the old size', async () => {
+      const host = await createTestHost(factory, {
+        secrets,
+        hostConfig: carry(hostSchema, oldHost).value,
+        config: carry(agentSchema, oldAgent).value,
+        fetch: imagesOk,
+      })
+      const { value } = await host.call('generate_image', { prompt: '示例' })
+      expect(host.calls[0]!.target).toBe('https://api.openai.com/v1/images/generations')
+      expect(bodyOf(host.calls[0]!.input)).toEqual({
+        model: 'gpt-image-1',
+        prompt: '示例',
+        n: 1,
+        size: '1024x1536',
+        quality: 'medium',
+        response_format: 'b64_json',
+      })
+      expect(value).toMatchObject({ ok: true, aspectRatio: '2:3' })
+    })
+
+    it('gives new installs the NekroAPI preset, a fast model and low quality', () => {
+      expect(carry(hostSchema, {}).value).toEqual({ endpoint: nekro, model: 'gemini-3.1-flash-image', api: 'auto' })
+      expect(carry(agentSchema, {}).value).toEqual({ size: '1:1', quality: 'low' })
     })
   })
 
@@ -73,8 +555,11 @@ describe('图片生成', () => {
     { prompt: '' },
     { prompt: ' ' },
     { prompt: 42 },
-    { prompt: '示例', size: '512x512' },
-    { prompt: '示例', size: null },
+    { prompt: '示例', aspect_ratio: '1024x1024' },
+    { prompt: '示例', aspect_ratio: null },
+    { prompt: '示例', reference_images: 'ast_ref1' },
+    { prompt: '示例', reference_images: [''] },
+    { prompt: '示例', reference_images: ['a', 'b', 'c', 'd', 'e'] },
   ])('rejects invalid inputs %j without fetching', async (args) => {
     const host = await createTestHost(factory, { secrets })
     expect((await host.call('generate_image', args)).value).toMatchObject({ ok: false })
@@ -83,7 +568,6 @@ describe('图片生成', () => {
 
   it.each([
     'bad url',
-    '',
     'ftp://example.com/v1',
     'https://user:password@example.com/',
     'https://example.com/v1?token=fixture',
@@ -92,24 +576,6 @@ describe('图片生成', () => {
     const host = await createTestHost(factory, { secrets, hostConfig: { endpoint } })
     expect((await host.call('generate_image', { prompt: '示例' })).text).toContain('服务地址无效')
     expect(host.calls).toEqual([])
-  })
-
-  it('falls back to the default model when it is blank', async () => {
-    const host = await createTestHost(factory, { secrets, hostConfig: { model: ' ' }, fetch: success })
-    await host.call('generate_image', { prompt: '示例' })
-    expect(JSON.parse((host.calls[0]?.input as { body: string }).body)).toMatchObject({ model: 'gpt-image-1' })
-  })
-
-  it('reports the media type recognized by the host', async () => {
-    const host = await createTestHost(factory, { secrets, fetch: success })
-    vi.spyOn(host.nxt.assets, 'create').mockResolvedValueOnce({
-      assetId: 'ast_9',
-      byteSize: 68,
-      mediaType: 'image/webp',
-    })
-    const { value, text } = await host.call('generate_image', { prompt: '示例' })
-    expect(value).toMatchObject({ ok: true, assetId: 'ast_9', mediaType: 'image/webp' })
-    expect(text).toContain('image/webp')
   })
 
   it.each([
@@ -123,22 +589,45 @@ describe('图片生成', () => {
       secrets,
       fetch: () => respond('敏感服务错误', { status: Number(status) }),
     })
-    expect((await host.call('generate_image', { prompt: '示例' })).text).toContain(String(message))
+    const { text } = await host.call('generate_image', { prompt: '示例' })
+    expect(text).toContain(String(message))
+    expect(text).not.toContain('敏感服务错误')
     expect(host.calls).toHaveLength(1)
     expect(host.assets).toEqual([])
+  })
+
+  it('quotes the provider error message briefly', async () => {
+    const host = await createTestHost(factory, {
+      secrets,
+      fetch: () => respond({ error: { message: `invalid size ${'x'.repeat(300)}` } }, { status: 400 }),
+    })
+    const { text } = await host.call('generate_image', { prompt: '示例' })
+    expect(text).toContain('HTTP 400：invalid size')
+    expect(text.length).toBeLessThan(260)
   })
 
   it.each([
     ['not JSON', '有效的 JSON'],
     [{}, '没有返回图片数据'],
-    [{ data: [] }, '没有返回图片数据'],
+    [{ candidates: [] }, '没有返回图片数据'],
     [{ data: [null] }, '没有返回图片数据'],
-    [{ data: [{ url: 'https://cdn.example.com/image.png' }] }, '不支持跨域下载'],
   ])('explains malformed response %j', async (body, message) => {
     const host = await createTestHost(factory, { secrets, fetch: () => respond(body) })
     expect((await host.call('generate_image', { prompt: '示例' })).text).toContain(String(message))
     expect(host.assets).toEqual([])
     expect(host.calls).toHaveLength(1)
+  })
+
+  it('reports the media type recognized by the host', async () => {
+    const host = await createTestHost(factory, { secrets, fetch: geminiOk })
+    vi.spyOn(host.nxt.assets, 'create').mockResolvedValueOnce({
+      assetId: 'ast_9',
+      byteSize: 68,
+      mediaType: 'image/webp',
+    })
+    const { value, text } = await host.call('generate_image', { prompt: '示例' })
+    expect(value).toMatchObject({ ok: true, assetId: 'ast_9', mediaType: 'image/webp' })
+    expect(text).toContain('image/webp')
   })
 
   it('explains failures with the cause and warns about billing only on timeouts', async () => {
@@ -148,10 +637,11 @@ describe('图片生成', () => {
         throw new Error('连接被拒绝')
       },
     })
-    const failure = await network.call('generate_image', { prompt: '示例' })
-    expect(failure.value).toEqual({ ok: false, message: '生成图片失败：连接被拒绝' })
-    expect(network.calls).toHaveLength(1)
-    for (const reason of ['外部服务 30 秒无响应', 'Request Timeout']) {
+    expect((await network.call('generate_image', { prompt: '示例' })).value).toEqual({
+      ok: false,
+      message: '生成图片失败：连接被拒绝',
+    })
+    for (const reason of ['外部服务 180 秒无响应', 'Request Timeout']) {
       const slow = await createTestHost(factory, {
         secrets,
         fetch: () => {
@@ -172,12 +662,11 @@ describe('图片生成', () => {
       ok: false,
       message: `生成图片失败：${'错'.repeat(200)}`,
     })
-    const host = await createTestHost(factory, { secrets, fetch: success })
+    const host = await createTestHost(factory, { secrets, fetch: geminiOk })
     vi.spyOn(host.nxt.assets, 'create').mockRejectedValueOnce(new Error('保存失败'))
     expect((await host.call('generate_image', { prompt: '示例' })).value).toEqual({
       ok: false,
       message: '生成图片失败：保存失败',
     })
-    expect(host.calls).toHaveLength(1)
   })
 })
