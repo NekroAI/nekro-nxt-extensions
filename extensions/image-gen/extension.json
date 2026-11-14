@@ -2,7 +2,7 @@
   "id": "ext_01M4B6TAC9WQVDC9QEYWZB5QQY",
   "slug": "image-gen",
   "displayName": "图片生成",
-  "description": "按描述画图或改图，返回图片供智能体发送。支持 OpenAI 兼容与 Gemini 接口的画图服务，默认预设 NekroAPI；使用你自己的 API Key，按服务商计费。",
+  "description": "让智能体画带中英文标题的海报、信息图、推文和网页截图、多格漫画、产品图，或照着对话里的图改图，画好直接发到对话里。默认用 NekroAPI，也能接其他 OpenAI 兼容或 Gemini 接口的服务；使用你自己的 API Key，按服务商计费。",
   "createdAt": 1791378000000,
   "requires": {
     "sdk": 16
@@ -29,14 +29,6 @@
       "schema": {
         "type": "object",
         "dict": {
-          "endpoint": {
-            "type": "string",
-            "meta": {
-              "description": "服务地址",
-              "default": "https://api.nekro.ai/v1",
-              "hint": "默认是 NekroAPI，也可以填任何 OpenAI 兼容或 Gemini 接口的服务：填 API 基础地址并保留 /v1 等路径，不要填完整的生成接口。请选择可信服务并使用 HTTPS。"
-            }
-          },
           "apiKey": {
             "type": "string",
             "meta": {
@@ -45,12 +37,94 @@
               "hint": "在所选服务的控制台创建（用 NekroAPI 时在 https://api.nekro.ai 获取），调用费用由这个 Key 所属账号承担。"
             }
           },
+          "preset": {
+            "type": "union",
+            "list": [
+              {
+                "type": "const",
+                "value": "gemini-nano-banana-2.1",
+                "meta": {
+                  "description": "Nano Banana 2.1：文字、信息图和多角色更稳，十几秒"
+                }
+              },
+              {
+                "type": "const",
+                "value": "gemini-3.1-flash-image",
+                "meta": {
+                  "description": "Nano Banana 2：快而稳，各类题材都行，十几秒"
+                }
+              },
+              {
+                "type": "const",
+                "value": "gemini-3-pro-image",
+                "meta": {
+                  "description": "Nano Banana Pro：写实质感和比例稳，约 20 秒"
+                }
+              },
+              {
+                "type": "const",
+                "value": "gpt-image-2.6-flare",
+                "meta": {
+                  "description": "GPT Image 2.6 快速档：排版和复杂要求遵从度高，约 20 秒"
+                }
+              },
+              {
+                "type": "const",
+                "value": "gpt-image-2.6-sunburst",
+                "meta": {
+                  "description": "GPT Image 2.6 精细档：细节最丰富，反复改图最一致，约 20 秒"
+                }
+              },
+              {
+                "type": "const",
+                "value": "doubao-seedream-5-0-260128",
+                "meta": {
+                  "description": "Seedream 5.0 Lite：写实照片和人物保持好，出 2K 大图，十几秒"
+                }
+              },
+              {
+                "type": "const",
+                "value": "grok-imagine-image-2.0",
+                "meta": {
+                  "description": "Grok Imagine 2.0：照片感强，人物长相保持好，约 10 秒"
+                }
+              },
+              {
+                "type": "const",
+                "value": "gpt-image-2",
+                "meta": {
+                  "description": "GPT Image 2：上一代，很慢，约一分半"
+                }
+              },
+              {
+                "type": "const",
+                "value": "custom",
+                "meta": {
+                  "description": "其他模型：在「高级」里填写模型名"
+                }
+              }
+            ],
+            "meta": {
+              "description": "模型",
+              "default": "gemini-nano-banana-2.1",
+              "hint": "每个模型都能画带字的海报、截图和漫画，区别主要在风格和细节。用 NekroAPI 以外的服务时选「其他模型」。"
+            }
+          },
+          "endpoint": {
+            "type": "string",
+            "meta": {
+              "description": "服务地址",
+              "default": "https://api.nekro.ai/v1",
+              "hint": "默认是 NekroAPI，也可以填任何 OpenAI 兼容或 Gemini 接口的服务：填 API 基础地址并保留 /v1 等路径，不要填完整的生成接口。请选择可信服务并使用 HTTPS。",
+              "advanced": true
+            }
+          },
           "model": {
             "type": "string",
             "meta": {
-              "description": "模型",
-              "default": "gemini-3.1-flash-image",
-              "hint": "默认 gemini-3.1-flash-image。NekroAPI 上实测可用：gemini-3.1-flash-image、gemini-3-pro-image、gemini-nano-banana-2.1、gpt-image-2.6-flare、gpt-image-2.6-sunburst、doubao-seedream-5-0-260128、grok-imagine-image-2.0（多在 10～20 秒），以及 gpt-image-2（较慢，约一分半）。用其他服务时填它支持的画图模型名。"
+              "description": "其他模型名",
+              "advanced": true,
+              "hint": "「模型」选「其他模型」时，填写服务支持的画图模型名。从旧版升级的配置在这里保留了原来的模型：「模型」仍是默认的 Nano Banana 2.1 时按这里调用，清空后才改用 Nano Banana 2.1。"
             }
           },
           "api": {
@@ -88,7 +162,8 @@
             "meta": {
               "description": "调用方式",
               "default": "auto",
-              "hint": "一般保持自动：内置模型按实测的方式调用，其他模型按名字判断，判断不出时用 OpenAI 生图接口。自动选择出错时再按服务商文档指定。"
+              "hint": "一般保持自动：内置模型按实测的方式调用，其他模型按名字判断，判断不出时用 OpenAI 生图接口。自动选择出错时再按服务商文档指定。",
+              "advanced": true
             }
           }
         }
@@ -183,21 +258,30 @@
             "list": [
               {
                 "type": "const",
-                "value": "low"
+                "value": "low",
+                "meta": {
+                  "description": "低（默认）：最快"
+                }
               },
               {
                 "type": "const",
-                "value": "medium"
+                "value": "medium",
+                "meta": {
+                  "description": "中"
+                }
               },
               {
                 "type": "const",
-                "value": "high"
+                "value": "high",
+                "meta": {
+                  "description": "高：更慢，可能更贵"
+                }
               }
             ],
             "meta": {
               "description": "图片质量",
               "default": "low",
-              "hint": "质量越高越慢，部分服务也更贵；高质量可能要等一两分钟甚至超时，一般保持 low。只对 GPT Image 和部分 Gemini 模型生效。"
+              "hint": "画面里字小、字多时，高质量更清楚，但可能要等一两分钟，有的服务价格也更高。对 GPT Image 和内置的 Gemini 模型生效。"
             }
           }
         }
@@ -208,7 +292,7 @@
     {
       "kind": "tool",
       "name": "generate_image",
-      "description": "按描述生成或修改一张图片，返回 assetId 供智能体发送",
+      "description": "按描述画一张图或参照图片改图，返回 assetId 供智能体发送",
       "verificationInput": {
         "prompt": ""
       }

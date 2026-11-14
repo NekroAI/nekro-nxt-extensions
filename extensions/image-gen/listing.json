@@ -1,5 +1,5 @@
 {
-  "summary": "让智能体按描述画图、参照图片改图，发到对话里。支持 OpenAI 兼容和 Gemini 接口的画图服务，默认预设 NekroAPI，使用你自己的 API Key，按服务商计费。",
-  "tags": ["图片", "绘画", "AI 生图", "改图", "OpenAI", "Gemini", "NekroAPI"],
+  "summary": "让智能体画带中英文标题的海报、信息图、推文截图、四格漫画和产品图，也能照着对话里的图改图，画好直接发到对话里。默认用 NekroAPI，使用你自己的 API Key，按服务商计费。",
+  "tags": ["图片", "绘画", "AI 生图", "改图", "海报", "信息图", "漫画", "NekroAPI"],
   "sourceUrl": "https://github.com/NekroAI/nekro-nxt-extensions/tree/main/extensions/image-gen"
 }

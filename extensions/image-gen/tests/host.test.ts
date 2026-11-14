@@ -102,7 +102,7 @@ describe('图片生成', () => {
       const host = await createTestHost(factory, { secrets, fetch: geminiOk })
       const { value, text } = await host.call('generate_image', { prompt: ' 虚构狐狸 ' })
       const call = host.calls[0]!
-      expect(call.target).toBe('https://api.nekro.ai/v1beta/models/gemini-3.1-flash-image:generateContent')
+      expect(call.target).toBe('https://api.nekro.ai/v1beta/models/gemini-nano-banana-2.1:generateContent')
       expect(headersOf(call.input)).toMatchObject({
         authorization: 'Bearer {{nxt-credential:apiKey}}',
         'x-goog-api-key': '{{nxt-credential:apiKey}}',
@@ -128,13 +128,15 @@ describe('图片生成', () => {
         ok: true,
         assetId: 'ast_1',
         mediaType: 'image/jpeg',
-        model: 'gemini-3.1-flash-image',
+        model: 'gemini-nano-banana-2.1',
         aspectRatio: '1:1',
+        seconds: 1,
       })
+      expect(text).toContain('模型 gemini-nano-banana-2.1，画幅 1:1，用时 1 秒')
       expect(text).toContain('send_channel_message 的 image')
       expect(text).not.toContain(jpeg)
       expect(text).not.toContain('sk-fixture')
-      expect(host.progress).toEqual(['正在用 gemini-3.1-flash-image 生成图片'])
+      expect(host.progress).toEqual(['正在用 gemini-nano-banana-2.1 生成图片'])
     })
 
     it('uses the ratio argument, the high-quality size and omits imageSize for models without it', async () => {
@@ -152,11 +154,22 @@ describe('图片生成', () => {
       expect(bodyOf(pro.calls[1]!.input)['generationConfig']).toMatchObject({ imageConfig: { aspectRatio: '4:3' } })
       const banana = await createTestHost(factory, {
         secrets,
-        hostConfig: { model: 'gemini-nano-banana-2.1' },
+        hostConfig: { preset: 'gemini-nano-banana-2.1' },
+        config: { quality: 'high' },
         fetch: geminiOk,
       })
       await banana.call('generate_image', { prompt: '示例' })
-      expect(bodyOf(banana.calls[0]!.input)['generationConfig']).toEqual({
+      expect(bodyOf(banana.calls[0]!.input)['generationConfig']).toMatchObject({
+        imageConfig: { aspectRatio: '1:1', imageSize: '2K' },
+      })
+      const other = await createTestHost(factory, {
+        secrets,
+        hostConfig: { preset: 'custom', model: 'fixture-gemini-image' },
+        config: { quality: 'high' },
+        fetch: geminiOk,
+      })
+      await other.call('generate_image', { prompt: '示例' })
+      expect(bodyOf(other.calls[0]!.input)['generationConfig']).toEqual({
         responseModalities: ['TEXT', 'IMAGE'],
         imageConfig: { aspectRatio: '1:1' },
       })
@@ -464,7 +477,14 @@ describe('图片生成', () => {
     it('falls back to the default model when it is blank', async () => {
       const host = await createTestHost(factory, { secrets, hostConfig: { model: ' ' }, fetch: geminiOk })
       await host.call('generate_image', { prompt: '示例' })
-      expect(host.calls[0]!.target).toContain('gemini-3.1-flash-image:generateContent')
+      expect(host.calls[0]!.target).toContain('gemini-nano-banana-2.1:generateContent')
+    })
+
+    it('asks for a model name when 其他模型 is chosen without one', async () => {
+      const host = await createTestHost(factory, { secrets, hostConfig: { preset: 'custom' }, fetch: geminiOk })
+      expect((await host.call('generate_image', { prompt: '示例' })).text).toContain('还没有填写模型名')
+      expect(host.calls).toEqual([])
+      expect(host.tools.get('generate_image')!.description).toContain('还没有选好模型')
     })
   })
 
@@ -594,16 +614,24 @@ describe('图片生成', () => {
   })
 
   describe('已安装用户的旧配置', () => {
-    // 旧版安装时宿主按当时的默认值把每个字段都存了下来。
+    // 旧版安装时宿主按当时的默认值把每个字段都存了下来；最早的版本还没有「调用方式」。
     const oldHost = { endpoint: 'https://api.openai.com/v1', model: 'gpt-image-1' }
     const oldAgent = { size: '1024x1536', quality: 'medium' }
+    const oldHosts = [
+      oldHost,
+      { endpoint: nekro, model: 'gemini-3.1-flash-image', api: 'auto' },
+      { endpoint: 'https://images.example.com/v1', model: 'fixture-chat-image', api: 'chat' },
+      { endpoint: nekro, model: 'gpt-image-2.6-sunburst', api: 'images' },
+    ]
 
     it('stays valid under the new schema, so the host keeps it instead of resetting to defaults', () => {
-      const host = carry(hostSchema, oldHost)
+      for (const previous of oldHosts) {
+        const host = carry(hostSchema, previous)
+        expect(host.issues).toEqual([])
+        expect(host.value).toEqual({ api: 'auto', ...previous, preset: 'gemini-nano-banana-2.1' })
+      }
       const agent = carry(agentSchema, oldAgent)
-      expect(host.issues).toEqual([])
       expect(agent.issues).toEqual([])
-      expect(host.value).toEqual({ ...oldHost, api: 'auto' })
       expect(agent.value).toEqual(oldAgent)
       for (const size of ['1024x1024', '1536x1024'])
         expect(carry(agentSchema, { size, quality: 'high' }).issues).toEqual([])
@@ -626,12 +654,127 @@ describe('图片生成', () => {
         quality: 'medium',
         response_format: 'b64_json',
       })
-      expect(value).toMatchObject({ ok: true, aspectRatio: '2:3' })
+      expect(value).toMatchObject({ ok: true, aspectRatio: '2:3', model: 'gpt-image-1' })
     })
 
-    it('gives new installs the NekroAPI preset, a fast model and low quality', () => {
-      expect(carry(hostSchema, {}).value).toEqual({ endpoint: nekro, model: 'gemini-3.1-flash-image', api: 'auto' })
+    it('keeps any saved model name, including the old default and the chat interface', async () => {
+      const expected = [
+        'https://api.openai.com/v1/images/generations',
+        'https://api.nekro.ai/v1beta/models/gemini-3.1-flash-image:generateContent',
+        'https://images.example.com/v1/chat/completions',
+        'https://api.nekro.ai/v1/images/generations',
+      ]
+      for (const [index, previous] of oldHosts.entries()) {
+        const host = await createTestHost(factory, {
+          secrets,
+          hostConfig: carry(hostSchema, previous).value,
+          fetch: (url) =>
+            url.includes('generateContent')
+              ? geminiOk(url, {})
+              : url.includes('chat')
+                ? respond({ choices: [{ message: { content: `![](data:image/png;base64,${png})` } }] })
+                : imagesOk(url, {}),
+        })
+        const { value } = await host.call('generate_image', { prompt: '示例' })
+        expect(value).toMatchObject({ ok: true, model: previous.model })
+        expect(host.calls[0]!.target).toBe(expected[index])
+        expect(host.tools.get('generate_image')!.description).toContain(previous.model)
+      }
+    })
+
+    it('switches once the user picks another model, and goes back to the default after clearing the old name', async () => {
+      const upgraded = carry(hostSchema, { endpoint: nekro, model: 'gemini-3.1-flash-image', api: 'auto' }).value
+      const picked = await createTestHost(factory, {
+        secrets,
+        hostConfig: { ...upgraded, preset: 'gpt-image-2.6-flare' },
+        fetch: imagesOk,
+      })
+      expect((await picked.call('generate_image', { prompt: '示例' })).value).toMatchObject({
+        model: 'gpt-image-2.6-flare',
+      })
+      const cleared = await createTestHost(factory, {
+        secrets,
+        hostConfig: { ...upgraded, model: '' },
+        fetch: geminiOk,
+      })
+      expect((await cleared.call('generate_image', { prompt: '示例' })).value).toMatchObject({
+        model: 'gemini-nano-banana-2.1',
+      })
+      const custom = await createTestHost(factory, {
+        secrets,
+        hostConfig: { ...upgraded, preset: 'custom', model: 'fixture-image' },
+        fetch: imagesOk,
+      })
+      expect((await custom.call('generate_image', { prompt: '示例' })).value).toMatchObject({ model: 'fixture-image' })
+    })
+
+    it('gives new installs the NekroAPI preset, Nano Banana 2.1 and low quality', async () => {
+      const fresh = carry(hostSchema, {}).value
+      expect(fresh).toEqual({ endpoint: nekro, preset: 'gemini-nano-banana-2.1', api: 'auto' })
       expect(carry(agentSchema, {}).value).toEqual({ size: '1:1', quality: 'low' })
+      const host = await createTestHost(factory, { secrets, hostConfig: fresh, fetch: geminiOk })
+      await host.call('generate_image', { prompt: '示例' })
+      expect(host.calls[0]!.target).toBe('https://api.nekro.ai/v1beta/models/gemini-nano-banana-2.1:generateContent')
+    })
+  })
+
+  describe('配置页与工具说明', () => {
+    const presetField = definition.config.host.schema.dict.preset
+    const presetValues = presetField.list.map((option) => option.value)
+    const builtins = presetValues.filter((value) => value !== 'custom')
+
+    it('offers every built-in model in the model menu, plus 其他模型', () => {
+      expect(presetValues.at(-1)).toBe('custom')
+      expect(presetField.meta.default).toBe('gemini-nano-banana-2.1')
+      for (const option of presetField.list.filter((entry) => entry.value !== 'custom'))
+        expect(option.meta.description).toMatch(/^[^：]+：.+(秒|分半)$/u)
+      // 服务地址、调用方式、其他模型名收在「高级」里。
+      const dict = definition.config.host.schema.dict
+      expect([dict.endpoint, dict.model, dict.api].map((field) => field.meta.advanced)).toEqual([true, true, true])
+      expect(definition.config.agent.schema.dict.quality.list.map((option) => option.meta.description)).toEqual([
+        '低（默认）：最快',
+        '中',
+        '高：更慢，可能更贵',
+      ])
+    })
+
+    it('names the configured model and its style in the tool description', async () => {
+      const descriptions = new Set<string>()
+      for (const preset of builtins) {
+        const host = await createTestHost(factory, { secrets, hostConfig: { preset } })
+        const tool = host.tools.get('generate_image')!
+        const label = presetField.list.find((option) => option.value === preset)!.meta.description
+        // 下拉选项里的名字与工具说明里的一致。
+        expect(tool.description).toContain(`当前模型是 ${label.split('：')[0]}（${preset}）`)
+        expect(tool.description).toContain('海报、信息图')
+        expect(tool.description).toContain('不要用 HTML 截图代替')
+        expect(tool.description).toContain('只改 X，保留')
+        descriptions.add(tool.description)
+      }
+      expect(descriptions.size).toBe(builtins.length)
+      const custom = await createTestHost(factory, {
+        secrets,
+        hostConfig: { preset: 'custom', model: 'fixture-image' },
+      })
+      expect(custom.tools.get('generate_image')!.description).toContain(
+        '当前模型是 fixture-image，不在内置列表里，擅长什么以服务商的说明为准。',
+      )
+    })
+
+    it('keeps the tool description short enough to sit in every turn', async () => {
+      const host = await createTestHost(factory, { secrets })
+      expect(host.tools.get('generate_image')!.description.length).toBeLessThan(600)
+    })
+
+    it('says in the ratio parameter when a model only has three sizes', async () => {
+      const ratio = async (preset: string) => {
+        const host = await createTestHost(factory, { secrets, hostConfig: { preset } })
+        const parameters = host.tools.get('generate_image')!.parameters as Record<string, { description?: string }>
+        return parameters['aspect_ratio']!.description
+      }
+      expect(await ratio('gpt-image-2.6-sunburst')).toContain('只出 1:1、2:3、3:2')
+      expect(await ratio('gemini-nano-banana-2.1')).not.toContain('只出')
+      expect(await ratio('doubao-seedream-5-0-260128')).not.toContain('只出')
     })
   })
 
@@ -712,7 +855,6 @@ describe('图片生成', () => {
     })
     const { value, text } = await host.call('generate_image', { prompt: '示例' })
     expect(value).toMatchObject({ ok: true, assetId: 'ast_9', mediaType: 'image/webp' })
-    expect(text).toContain('image/webp')
   })
 
   it('explains failures with the cause and warns about billing only on timeouts', async () => {

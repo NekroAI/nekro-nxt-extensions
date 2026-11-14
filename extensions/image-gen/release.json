@@ -1,11 +1,11 @@
 {
-  "revisionNumber": 5,
-  "revisionId": "xrv_01M7CWH8S505FMGTHPMYZS4QZ6",
-  "payloadDigest": "100738952f261adb27de4697039899e3eefc6d4866dc18651142047bf0c0d315",
-  "createdAt": 1794655167273,
+  "revisionNumber": 6,
+  "revisionId": "xrv_01M7CZZJVR70GARVJK6EVAD2HP",
+  "payloadDigest": "77182de7532e9cac7b32634eabba30c37552e8a446ec5a42e0c5892e7a3a6d24",
+  "createdAt": 1794658782077,
   "lineage": {
-    "parent": "xrv_01M7B43TBZWF7ZWKBW5RTTRQK7",
-    "ancestry": ["xrv_01M7B43TBZWF7ZWKBW5RTTRQK7", "xrv_01M4FEYTW44A96EA6JYR6RBJG8"]
+    "parent": "xrv_01M7CWH8S505FMGTHPMYZS4QZ6",
+    "ancestry": ["xrv_01M7CWH8S505FMGTHPMYZS4QZ6", "xrv_01M7B43TBZWF7ZWKBW5RTTRQK7", "xrv_01M4FEYTW44A96EA6JYR6RBJG8"]
   },
-  "notes": "API Key 现在可以选择凭据库里「只用于网络请求」的凭据：扩展不再读取 Key 的原文，由 NekroNXT 在请求发往图片服务时填入。以前选了这类凭据会误报“还没有配置 API Key”；凭据不可用时会说明原因。"
+  "notes": "模型改成下拉选择，每个模型写明特点和出图时间；新安装默认用 Nano Banana 2.1。智能体现在知道画图模型能准确画出中英文标题，会把海报、信息图、截图、漫画这类活交给它，提示词也写得更完整。工具结果写明所用模型、画幅和用时；图片质量选项加了说明。从旧版升级时，原来的服务地址、模型和调用方式保持不变。"
 }

@@ -38,26 +38,85 @@ const GROK: ModelProfile = { api: 'images', sizes: 'none', edit: 'multipart' }
 /** 其他 OpenAI 兼容生图模型的兜底参数。 */
 const GENERIC_IMAGES: ModelProfile = { api: 'images', sizes: 'gpt', edit: 'multipart' }
 
+/** 内置模型：调用参数，加上写进工具说明的名字和一句风格说明。 */
+interface BuiltinModel extends ModelProfile {
+  readonly name: string
+  readonly style: string
+}
+
 /**
- * 内置模型表：NekroAPI 当前的画图模型，2026-11-14 实测过（R-343）。所有模型都直接返回 b64，没有返回网址的。
- * - GPT Image：/v1/images/generations，b64 PNG；gpt-image-2 低质量也要八十多秒，2.6 两款约 20 秒；
- *   n=1 时偶尔返回两张，只取第一张；参考图走 /v1/images/edits（multipart）。
- * - Gemini 图片模型：/v1beta/models/{model}:generateContent，图片在 inlineData，9～21 秒；对话接口也能出图，
- *   但控制不了比例，所以用 generateContent。参考图放进 inlineData。
- * - Seedream：/v1/images/generations，b64 JPEG，约 13 秒；尺寸按它的 2K 规则（传 1024x1024 也会给 2048x2048）；
- *   参考图放在同一请求的 image 字段（data URL）。
- * - Grok Imagine：/v1/images/generations，b64 PNG，约 10 秒；参考图走 /v1/images/edits。
+ * 内置模型表：NekroAPI 当前的画图模型。调用方式 2026-11-14 实测过（R-343），模型身份按公开资料核对（R-346）。
+ * 所有模型都直接返回 b64，没有返回网址的。
+ * - gemini-nano-banana-2.1 是 Nano Banana 2.1（2026-10），取代 Nano Banana 2，文字、信息图和多角色一致性更好；
+ *   gemini-3.1-flash-image 是 Nano Banana 2；gemini-3-pro-image 是 Nano Banana Pro，较慢，写实与比例稳。
+ *   都走 /v1beta/models/{model}:generateContent，图片在 inlineData，9～21 秒；对话接口也能出图，但控制不了比例。
+ *   参考图放进 inlineData；高质量时发 imageConfig.imageSize: '2K'。
+ * - gpt-image-2.6-flare / sunburst 是 GPT Image 2.6（2026-11）的快速档和精细档，约 20 秒；gpt-image-2 是上一代，
+ *   OpenAI 已标为弃用，低质量也要八十多秒。都走 /v1/images/generations，b64 PNG；n=1 时偶尔返回两张，只取第一张；
+ *   参考图走 /v1/images/edits（multipart）。
+ * - doubao-seedream-5-0-260128 是 Seedream 5.0 Lite：/v1/images/generations，b64 JPEG，约 13 秒；尺寸按它的 2K 规则
+ *   （传 1024x1024 也会给 2048x2048）；参考图放在同一请求的 image 字段（data URL）。
+ * - grok-imagine-image-2.0：/v1/images/generations，b64 PNG，约 10 秒；参考图走 /v1/images/edits。xAI 官方接口有
+ *   aspect_ratio 参数，但没有确认 NekroAPI 是否透传，画幅仍写进描述。
  * 实测只用了 1:1，其他比例、多张参考图和 Gemini 的 2K（imageSize）按公开协议实现。
+ * 名字要与 extension.json 里「模型」的选项一致，tests 里有对照。
  */
-const MODELS: Readonly<Record<string, ModelProfile>> = {
-  'gpt-image-2': GPT_IMAGE,
-  'gpt-image-2.6-flare': GPT_IMAGE,
-  'gpt-image-2.6-sunburst': GPT_IMAGE,
-  'gemini-3-pro-image': { api: 'gemini', imageSize: true },
-  'gemini-3.1-flash-image': { api: 'gemini', imageSize: true },
-  'gemini-nano-banana-2.1': GEMINI,
-  'doubao-seedream-5-0-260128': SEEDREAM,
-  'grok-imagine-image-2.0': GROK,
+const MODELS: Readonly<Record<string, BuiltinModel>> = {
+  'gemini-nano-banana-2.1': {
+    ...GEMINI,
+    imageSize: true,
+    name: 'Nano Banana 2.1',
+    style: '出图快，画面文字、信息图和多角色一致性在 Google 几款里最好。',
+  },
+  'gemini-3.1-flash-image': { ...GEMINI, imageSize: true, name: 'Nano Banana 2', style: '出图快，各类题材都稳。' },
+  'gemini-3-pro-image': {
+    ...GEMINI,
+    imageSize: true,
+    name: 'Nano Banana Pro',
+    style: '写实质感和比例稳，比两款 Flash 慢一些。',
+  },
+  'gpt-image-2.6-flare': {
+    ...GPT_IMAGE,
+    name: 'GPT Image 2.6 快速档',
+    style: '排版、画面文字和复杂要求的遵从度高，出图快，适合反复出稿。',
+  },
+  'gpt-image-2.6-sunburst': {
+    ...GPT_IMAGE,
+    name: 'GPT Image 2.6 精细档',
+    style: '细节最丰富，多次改图时人物和画面最能保持一致。',
+  },
+  'doubao-seedream-5-0-260128': {
+    ...SEEDREAM,
+    name: 'Seedream 5.0 Lite',
+    style: '写实照片、空间结构和人物保持好，出 2K 大图，不支持透明背景。',
+  },
+  'grok-imagine-image-2.0': {
+    ...GROK,
+    name: 'Grok Imagine 2.0',
+    style: '照片感强，人物长相保持好；简体中文有时会画成繁体，带中文的图要检查。',
+  },
+  'gpt-image-2': {
+    ...GPT_IMAGE,
+    name: 'GPT Image 2',
+    style: '上一代 GPT Image，会先规划版面再出图，很慢，一张约一分半。',
+  },
+}
+
+/** 新安装的默认模型；「模型」选「其他模型」时用 `model` 里填写的名字。 */
+const DEFAULT_PRESET = 'gemini-nano-banana-2.1'
+const CUSTOM_PRESET = 'custom'
+
+/**
+ * 实际调用的模型。旧版只有文本框 `model`，安装时宿主把当时的默认值也存了下来；升级后宿主给新字段 `preset` 填上默认值，
+ * 所以 `preset` 是默认值、`model` 又有内容时，按 `model` 调用，老用户的模型不变。`preset` 选了别的内置模型时以它为准；
+ * 选「其他模型」时只用 `model`，没填返回 undefined。
+ */
+const chosenModel = (service: ServiceConfig): string | undefined => {
+  const preset = service.preset?.trim() || DEFAULT_PRESET
+  const custom = service.model?.trim() ?? ''
+  if (preset === CUSTOM_PRESET) return custom || undefined
+  if (preset === DEFAULT_PRESET && custom) return custom
+  return preset
 }
 
 /** 表里没有的模型按名字推断调用方式；都不像时走 OpenAI 生图接口。 */
@@ -108,6 +167,35 @@ const RATIO_WORDS: Readonly<Record<Ratio, string>> = {
   '16:9': '横版 16:9',
 }
 
+/**
+ * 工具说明：智能体每轮都会读到，按当前配置的模型生成（改本机配置后扩展重新加载，说明随之更新）。
+ * 调用它的智能体容易把画图模型当成几年前只能画简单插画的那一代，带字的活不敢交、提示词写得很短，所以这里写清
+ * 现在能做的事和提示词写法（取自 OpenAI 的 GPT Image 提示词指南）。中文长段文字没有可靠测评，不夸大。
+ */
+const toolDescription = (model: string | undefined): string => {
+  const builtin = model === undefined ? undefined : MODELS[model]
+  const current =
+    model === undefined
+      ? '还没有选好模型，调用会提示用户去扩展配置里填写。'
+      : builtin
+        ? `当前模型是 ${builtin.name}（${model}）：${builtin.style}`
+        : `当前模型是 ${model}，不在内置列表里，擅长什么以服务商的说明为准。`
+  return [
+    '按描述画一张图，或参照对话里的图片改图，返回 assetId，用 send_channel_message 的 image 块发出。',
+    '现在的画图模型能把中英文文字准确画进画面，标题、正文和分层级的排版都行；海报、信息图、界面和网页截图、社交媒体帖子截图、多格漫画、产品图都能直接画，也能保持人物不变改图、照参考图换风格。中文短标题、标语一般没问题，长段小字画完要检查。需要图的活就交给它，不要用 HTML 截图代替，也不用事先说字可能画不好。',
+    'prompt 像给设计师写需求，按场景、主体、细节、约束分段。画面里的文字放进引号原样写出，并写明位置和字体样式；不要别的字时写明“不要出现其他文字”。写长写细都可以，用户提的要求一条也别省。改图时写“只改 X，保留 …”。画出来哪里不对，把这张图放进 reference_images，写清要改的地方再画一次。',
+    `${current}每次调用按服务商价格计费。`,
+  ].join('\n\n')
+}
+
+/** 画幅参数的说明：只出三种尺寸的模型说明会取最接近的比例。 */
+const ratioDescription = (model: string | undefined): string => {
+  const profile = model === undefined ? undefined : inferProfile(model)
+  return profile?.api === 'images' && profile.sizes === 'gpt'
+    ? '画幅，不填时用智能体配置里的默认画幅。这个模型只出 1:1、2:3、3:2，其他比例取最接近的一种'
+    : '画幅，不填时用智能体配置里的默认画幅'
+}
+
 const MAX_REFERENCES = 4
 const MAX_REFERENCE_BYTES = 8 * 1024 * 1024
 /**
@@ -116,14 +204,18 @@ const MAX_REFERENCE_BYTES = 8 * 1024 * 1024
  */
 const REQUEST_TIMEOUT_MS = 180_000
 const DEFAULT_ENDPOINT = 'https://api.nekro.ai/v1'
-const DEFAULT_MODEL = 'gemini-3.1-flash-image'
 
 type GenerateArgs = {
   readonly prompt?: string
   readonly aspect_ratio?: Ratio
   readonly reference_images?: readonly string[]
 }
-type ServiceConfig = { readonly endpoint?: string; readonly model?: string; readonly api?: 'auto' | Api }
+type ServiceConfig = {
+  readonly endpoint?: string
+  readonly preset?: string
+  readonly model?: string
+  readonly api?: 'auto' | Api
+}
 type AgentConfig = { readonly size?: string; readonly quality?: Quality }
 type GenerateResult =
   | {
@@ -132,6 +224,8 @@ type GenerateResult =
       readonly mediaType: string
       readonly model: string
       readonly aspectRatio: Ratio
+      /** 从开始读参考图到图片保存好的秒数。 */
+      readonly seconds: number
       /** 实际画幅与要求不同时的说明。 */
       readonly note?: string
     }
@@ -384,6 +478,7 @@ export default defineHostExtension(async ({ harness, nxt: host }) => ({
   apply(ctx) {
     const nxt = ctx.nxt
     if (!nxt) throw new Error('图片生成需要宿主能力 nxt。')
+    const configuredModel = chosenModel(harness.config() as ServiceConfig)
 
     /** 发出一次请求并解析 JSON；状态码错误转成给用户看的说明。 */
     const post = async (
@@ -431,19 +526,18 @@ export default defineHostExtension(async ({ harness, nxt: host }) => ({
       ctx,
       harness.defineTool<GenerateArgs, GenerateResult>({
         name: 'generate_image',
-        description:
-          '按 prompt 生成一张图片，返回 assetId，由智能体用 send_channel_message 的 image 块发送。aspect_ratio 可选 1:1、2:3、3:2、3:4、4:3、9:16、16:9，默认取配置。reference_images 可传 1–4 个当前对话里图片的 assetId，用来改图或参照人物、风格；不传就是按文字生成。每次调用按服务商价格计费，使用用户自己的 API Key，通常需要十几秒到一分钟。',
+        description: toolDescription(configuredModel),
         parameters: {
           prompt: {
             type: 'string',
             required: true,
-            description: '非空的图片描述，包含主体、风格和构图；改图时写清要改什么、保留什么',
+            description: '画面需求，按工具说明的写法写，长短不限',
           },
-          aspect_ratio: { type: 'string', enum: [...RATIOS], description: '画幅比例，默认取配置值' },
+          aspect_ratio: { type: 'string', enum: [...RATIOS], description: ratioDescription(configuredModel) },
           reference_images: {
             type: 'array',
             items: { type: 'string' },
-            description: `可选，1–${MAX_REFERENCES} 个参考图的 assetId（当前对话里能看到的图片）`,
+            description: `可选，1–${MAX_REFERENCES} 个对话里图片的 assetId，用来改图、保持人物或参照风格；也可以放刚生成的图接着改`,
           },
         },
         output: {
@@ -452,7 +546,7 @@ export default defineHostExtension(async ({ harness, nxt: host }) => ({
             {
               type: 'text',
               text: value.ok
-                ? `图片已生成（${value.model}，${value.aspectRatio}，${value.mediaType}），assetId：${value.assetId}。${value.note ?? ''}请用 send_channel_message 的 image 块携带此 assetId 发送图片。`
+                ? `图片已生成：模型 ${value.model}，画幅 ${value.aspectRatio}，用时 ${value.seconds} 秒，assetId：${value.assetId}。${value.note ?? ''}请用 send_channel_message 的 image 块携带此 assetId 发送图片。`
                 : value.message,
             },
           ],
@@ -491,7 +585,12 @@ export default defineHostExtension(async ({ harness, nxt: host }) => ({
               message: '图片服务地址无效，请填写 http/https API 基础地址，不要包含账号、密码、查询参数或片段。',
             }
           }
-          const model = service.model?.trim() || DEFAULT_MODEL
+          const model = chosenModel(service)
+          if (model === undefined)
+            return {
+              ok: false,
+              message: '模型选了「其他模型」，但还没有填写模型名。请在扩展的本机配置里填写「其他模型名」。',
+            }
           const inferred = inferProfile(model)
           // 「调用方式」指定了与推断不同的接口时，按用户指定的来。
           const profile: ModelProfile =
@@ -502,6 +601,7 @@ export default defineHostExtension(async ({ harness, nxt: host }) => ({
               : inferred
           const ratio = ratioArg ?? configuredRatio(preference.size)
           const quality: Quality = preference.quality ?? 'low'
+          const startedAt = Date.now()
           try {
             const references: Reference[] = []
             for (const assetId of referenceIds) {
@@ -628,6 +728,7 @@ export default defineHostExtension(async ({ harness, nxt: host }) => ({
               mediaType: asset.mediaType,
               model,
               aspectRatio: ratio,
+              seconds: Math.max(1, Math.round((Date.now() - startedAt) / 1000)),
               ...(note ? { note } : {}),
             })
             if ('url' in picture) {
