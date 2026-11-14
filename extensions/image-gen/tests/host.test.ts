@@ -733,7 +733,7 @@ describe('图片生成', () => {
       expect([dict.endpoint, dict.model, dict.api].map((field) => field.meta.advanced)).toEqual([true, true, true])
       expect(definition.config.agent.schema.dict.quality.list.map((option) => option.meta.description)).toEqual([
         '低（默认）：最快',
-        '中',
+        '中：细节和小字更清楚，稍慢',
         '高：更慢，可能更贵',
       ])
     })

@@ -124,7 +124,7 @@
             "meta": {
               "description": "其他模型名",
               "advanced": true,
-              "hint": "「模型」选「其他模型」时，填写服务支持的画图模型名。从旧版升级的配置在这里保留了原来的模型：「模型」仍是默认的 Nano Banana 2.1 时按这里调用，清空后才改用 Nano Banana 2.1。"
+              "hint": "「模型」选「其他模型」时填写。这里有内容时，即使「模型」显示 Nano Banana 2.1，也按这里的模型调用（从旧版升级的配置会保留原来的模型）。"
             }
           },
           "api": {
@@ -267,7 +267,7 @@
                 "type": "const",
                 "value": "medium",
                 "meta": {
-                  "description": "中"
+                  "description": "中：细节和小字更清楚，稍慢"
                 }
               },
               {
