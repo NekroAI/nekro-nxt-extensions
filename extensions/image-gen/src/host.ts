@@ -1,8 +1,9 @@
 import { defineHostExtension } from '@nekro-nxt/extension-sdk'
-import type { NxtHostService } from '@nekro-nxt/extension-sdk'
+import type { NxtFetchResponse, NxtHostService } from '@nekro-nxt/extension-sdk'
 
 /**
- * 图片生成：凭据只从宿主读取，生成文件只返回 Asset，不直接在频道发言。
+ * 图片生成：API Key 用 `secrets.placeholder` 放进请求头，由宿主在发出时填入，代码不接触原文，「只用于网络请求」的
+ * 凭据也能用；生成文件只返回 Asset，不直接在频道发言。
  *
  * 服务地址、API Key 与模型是本机配置（`config.host`），所有智能体共用一份，请求经本机层 `nxt` 发出；
  * 画幅与质量是每个智能体自己的偏好（`config.agent`），生成的图片保存为该智能体当前频道的 Asset，
@@ -160,6 +161,25 @@ class ServiceError extends Error {
   ) {
     super(message)
   }
+}
+
+/** 宿主请求超时只说明没有等到响应，服务端可能仍在生成并计费。 */
+const TIMEOUT_REASON = /无响应|超时|timeout/iu
+const TIMEOUT_ADVICE = '服务端可能仍在生成并已计费，重试前请先确认；可以改用较低的质量、更快的模型，或不带参考图。'
+
+/**
+ * 请求没有拿到响应时给用户的说明。宿主在发出前检查凭据：API Key 没有填写和所选凭据不对这个智能体开放报的是同一个原因，
+ * 凭据不允许发往服务地址时说明被拒的主机；网络问题与超时也走这里。扩展分不出前两种，所以转述宿主的原因，再提示没填时去哪里填。
+ */
+const requestFailed = (error: unknown): ServiceError => {
+  const reason = String(error instanceof Error ? error.message : error)
+    .replace(/[。.\s]+$/u, '')
+    .slice(0, 200)
+  return new ServiceError(
+    TIMEOUT_REASON.test(reason)
+      ? `生成图片失败：${reason}。${TIMEOUT_ADVICE}`
+      : `生成图片失败：${reason}。如果还没有填写 API Key，请在扩展配置中填写。`,
+  )
 }
 
 const DATA_URL = /^data:(image\/[\w.+-]+);base64,([A-Za-z0-9+/=\s]+)$/iu
@@ -371,12 +391,17 @@ export default defineHostExtension(async ({ harness, nxt: host }) => ({
       headers: Readonly<Record<string, string>>,
       payload: { readonly body: string } | { readonly bodyBase64: string },
     ): Promise<Record<string, unknown>> => {
-      const response = await host.http.fetch(url, {
-        method: 'POST',
-        headers,
-        ...payload,
-        timeoutMs: REQUEST_TIMEOUT_MS,
-      })
+      let response: NxtFetchResponse
+      try {
+        response = await host.http.fetch(url, {
+          method: 'POST',
+          headers,
+          ...payload,
+          timeoutMs: REQUEST_TIMEOUT_MS,
+        })
+      } catch (error) {
+        throw requestFailed(error)
+      }
       if (response.status === 401 || response.status === 403)
         throw new ServiceError('图片服务拒绝了请求，请检查 API Key 和模型访问权限。')
       if (response.status === 429) throw new ServiceError('图片服务额度不足或请求过于频繁，请检查余额或稍后再试。')
@@ -478,9 +503,6 @@ export default defineHostExtension(async ({ harness, nxt: host }) => ({
           const ratio = ratioArg ?? configuredRatio(preference.size)
           const quality: Quality = preference.quality ?? 'low'
           try {
-            const apiKey = await host.secrets.get('apiKey')
-            if (!apiKey?.trim())
-              return { ok: false, message: '还没有配置图片服务的 API Key，请在扩展配置中填写后再生成。' }
             const references: Reference[] = []
             for (const assetId of referenceIds) {
               try {
@@ -493,6 +515,8 @@ export default defineHostExtension(async ({ harness, nxt: host }) => ({
               }
             }
             execution.progress({ text: `正在用 ${model} 生成图片` })
+            // 占位符由宿主在发出时换成 API Key；凭据没有填写或被拒时 fetch 失败，由 post 转成说明。
+            const apiKey = host.secrets.placeholder('apiKey')
             const auth = { authorization: `Bearer ${apiKey}` }
             const json = { ...auth, 'content-type': 'application/json' }
             let picture: Picture | undefined
@@ -630,11 +654,9 @@ export default defineHostExtension(async ({ harness, nxt: host }) => ({
           } catch (error) {
             if (error instanceof ServiceError) return { ok: false, message: error.message }
             const reason = String(error instanceof Error ? error.message : error)
-            // 宿主请求超时只说明没有等到响应，服务端可能仍在生成并计费。
-            const timedOut = /无响应|超时|timeout/iu.test(reason)
             return {
               ok: false,
-              message: `生成图片失败：${reason.slice(0, 200)}${timedOut ? '。服务端可能仍在生成并已计费，重试前请先确认；可以改用较低的质量、更快的模型，或不带参考图。' : ''}`,
+              message: `生成图片失败：${reason.slice(0, 200)}${TIMEOUT_REASON.test(reason) ? `。${TIMEOUT_ADVICE}` : ''}`,
             }
           }
         },

@@ -54,7 +54,7 @@ export interface TestHostOptions {
   readonly hostConfig?: Readonly<Record<string, ExtensionJsonValue>>
   /** 测试智能体的配置（`config.agent`），挂载中的 `ctx.config()`。 */
   readonly config?: Readonly<Record<string, ExtensionJsonValue>>
-  /** 两层凭据字段不重名，这里按字段名一起给出。 */
+  /** 两层凭据字段不重名，这里按字段名一起给出；没有给出的字段，带它占位符的请求会像真实宿主一样失败。 */
   readonly secrets?: Readonly<Record<string, string>>
   readonly fetch?: FetchHandler
   readonly context?: Partial<NxtCallContext>
@@ -230,6 +230,13 @@ export const createTestHost = async (
     http: {
       fetch: async (url, init = {}) => {
         calls.push({ kind: 'fetch', target: url, input: init })
+        // 与真实宿主相同：请求里的占位符对应的凭据没有设置时，请求不发出，fetch 直接失败。
+        for (const text of [url, ...Object.values(init.headers ?? {}), init.body ?? '']) {
+          for (const [, key] of text.matchAll(/\{\{nxt-credential:([^}]+)\}\}/gu)) {
+            if (options.secrets?.[key!] === undefined)
+              throw new Error(`凭据字段 ${key} 还没有设置，或者绑定的凭据不对当前智能体开放。`)
+          }
+        }
         if (!options.fetch) throw new Error(`测试宿主没有提供 fetch：${url}`)
         return options.fetch(url, init)
       },

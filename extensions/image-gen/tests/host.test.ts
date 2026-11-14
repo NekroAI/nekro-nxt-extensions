@@ -46,11 +46,54 @@ describe('图片生成', () => {
     expect(host.assets).toEqual([])
   })
 
-  it('requests a key without network access', async () => {
-    for (const options of [{}, { secrets: { apiKey: ' ' } }, { hostConfig: { apiKey: 'not-a-secret' } }]) {
-      const host = await createTestHost(factory, options)
-      expect((await host.call('generate_image', { prompt: '虚构狐狸' })).text).toContain('还没有配置')
-      expect(host.calls).toEqual([])
+  it('asks for the API Key when the host has none to fill in, without reading it in code', async () => {
+    for (const options of [{}, { hostConfig: { apiKey: 'not-a-secret' } }]) {
+      const fetch = vi.fn(geminiOk)
+      const host = await createTestHost(factory, { ...options, fetch })
+      const get = vi.spyOn(host.hostNxt.secrets, 'get')
+      expect((await host.call('generate_image', { prompt: '虚构狐狸' })).value).toEqual({
+        ok: false,
+        message:
+          '生成图片失败：凭据字段 apiKey 还没有设置，或者绑定的凭据不对当前智能体开放。如果还没有填写 API Key，请在扩展配置中填写。',
+      })
+      expect(fetch).not.toHaveBeenCalled()
+      expect(get).not.toHaveBeenCalled()
+      expect(host.assets).toEqual([])
+    }
+  })
+
+  it('relays why the host refused the credential', async () => {
+    const host = await createTestHost(factory, {
+      secrets,
+      fetch: () => {
+        throw new Error('访问被拒：凭据不允许发往 api.nekro.ai。')
+      },
+    })
+    expect((await host.call('generate_image', { prompt: '虚构狐狸' })).text).toBe(
+      '生成图片失败：访问被拒：凭据不允许发往 api.nekro.ai。如果还没有填写 API Key，请在扩展配置中填写。',
+    )
+  })
+
+  it('puts the credential placeholder, never the key, into every interface', async () => {
+    const chatOk: FetchHandler = () =>
+      respond({ choices: [{ message: { content: `![](data:image/png;base64,${png})` } }] })
+    const cases = [
+      { model: 'gpt-image-2', fetch: imagesOk, target: `${nekro}/images/generations`, references: [] },
+      { model: 'gpt-image-2', fetch: imagesOk, target: `${nekro}/images/edits`, references: ['ast_ref1'] },
+      { model: 'fixture-chat-image', api: 'chat', fetch: chatOk, target: `${nekro}/chat/completions`, references: [] },
+    ]
+    for (const { model, api, fetch, target, references } of cases) {
+      const host = await createTestHost(factory, {
+        secrets,
+        hostConfig: { model, ...(api ? { api } : {}) },
+        fetch,
+      })
+      host.addPicture('ast_ref1', { channels: ['chn_TEST'], base64: png })
+      const { value } = await host.call('generate_image', { prompt: '示例', reference_images: references })
+      expect(value).toMatchObject({ ok: true })
+      expect(host.calls[0]!.target).toBe(target)
+      expect(headersOf(host.calls[0]!.input)['authorization']).toBe('Bearer {{nxt-credential:apiKey}}')
+      expect(JSON.stringify(host.calls)).not.toContain('sk-fixture')
     }
   })
 
@@ -61,8 +104,8 @@ describe('图片生成', () => {
       const call = host.calls[0]!
       expect(call.target).toBe('https://api.nekro.ai/v1beta/models/gemini-3.1-flash-image:generateContent')
       expect(headersOf(call.input)).toMatchObject({
-        authorization: 'Bearer sk-fixture',
-        'x-goog-api-key': 'sk-fixture',
+        authorization: 'Bearer {{nxt-credential:apiKey}}',
+        'x-goog-api-key': '{{nxt-credential:apiKey}}',
       })
       expect((call.input as NxtFetchInit).timeoutMs).toBe(180_000)
       expect(bodyOf(call.input)).toEqual({
@@ -681,7 +724,7 @@ describe('图片生成', () => {
     })
     expect((await network.call('generate_image', { prompt: '示例' })).value).toEqual({
       ok: false,
-      message: '生成图片失败：连接被拒绝',
+      message: '生成图片失败：连接被拒绝。如果还没有填写 API Key，请在扩展配置中填写。',
     })
     for (const reason of ['外部服务 180 秒无响应', 'Request Timeout']) {
       const slow = await createTestHost(factory, {
@@ -702,7 +745,7 @@ describe('图片生成', () => {
     })
     expect((await long.call('generate_image', { prompt: '示例' })).value).toEqual({
       ok: false,
-      message: `生成图片失败：${'错'.repeat(200)}`,
+      message: `生成图片失败：${'错'.repeat(200)}。如果还没有填写 API Key，请在扩展配置中填写。`,
     })
     const host = await createTestHost(factory, { secrets, fetch: geminiOk })
     vi.spyOn(host.nxt.assets, 'create').mockRejectedValueOnce(new Error('保存失败'))

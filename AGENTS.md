@@ -9,7 +9,7 @@
 - 一个扩展分两层（Manifest V7）：factory 在本机只执行一次（本机实例），在这里用 `harness.handle` 注册界面数据接口，可使用参数里的本机层 `nxt`；factory 返回的插件挂载到每个启用它的智能体，在其中注册工具、使用 `ctx.nxt`。
 - 权限最小：只声明真正用到的能力，并放在对应的层：本机层（`permissions.host`，安装时确认，对整台机器生效）只有 `network` 与 `storage`；智能体层（`permissions.agent`，给智能体启用时确认）是其余能力。网络优先用 `domains`，地址由用户决定时用 `config`，尽量不用 `unrestricted`。
 - 配置分两层：所有智能体共用的（服务地址、API Key、共用规则）放 `config.host`，用 `harness.config()` 与本机层 `nxt` 读取；每个智能体自己的偏好放 `config.agent`，用 `ctx.config()` 读取。两层字段不能重名；`network.mode: 'config'` 只能引用同一层的字段。
-- 凭据一律是 `meta.role: 'secret'` 配置字段，用对应层的 `secrets.get` 读取（本机配置用 factory 参数里的 `nxt`，智能体配置用 `ctx.nxt`）；凭据字段不能有默认值。
+- 凭据一律是 `meta.role: 'secret'` 配置字段，凭据字段不能有默认值。凭据优先用对应层的 `secrets.placeholder` 放进请求（本机配置用 factory 参数里的 `nxt`，智能体配置用 `ctx.nxt`），由宿主在发出时填入，代码不接触原文：`secrets.get` 读不到凭据库中「只用于网络请求」的凭据。确实需要原文时在同一行或上一行写 `// secrets.get: 理由`，否则 `pnpm check` 报错。验收凭据字段时，直接填写、凭据库「可用于程序」、凭据库「只用于网络请求」三种来源分别试一次。
 - 工具与页面、面板要共用数据时，智能体层用 `scope: 'shared'` 存储，本机层 `nxt.storage` 读写的是同一份；面板的界面数据接口按宿主传入的 `caller`（智能体、频道）区分数据。
 - 扩展不能在频道发言：要发送图片、音频或文件时创建 Asset 并把 `assetId` 返回给智能体。
 - 静态提示只放固定文字；会变化的状态放动态上下文，内容要粗粒度，不能含时间戳、随机数或精确计数。

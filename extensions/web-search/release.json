@@ -1,7 +1,11 @@
 {
-  "revisionNumber": 3,
-  "revisionId": "xrv_01M4FEYTZFVK5J2TVZP7N0ZTZ1",
-  "payloadDigest": "6d5366a5207d61b2acf4b869662776fd4c7ab407385dc0f9f6d99a0199c0acac",
-  "createdAt": 1791520369647,
-  "notes": "迁移到 NekroNXT 扩展格式 V7，需要支持 V7 的 NekroNXT。搜索服务地址与 API Key 移到本机配置，所有智能体共用；默认返回条数仍按智能体设置。升级后请在本机配置中重新填写 API Key。"
+  "revisionNumber": 4,
+  "revisionId": "xrv_01M7CWH9YCBJBG9YKZDZVQS1ZY",
+  "payloadDigest": "ec8a3fb37b317772c25b77c632feb2432ee67df80b4b77b19a53e19f6a5e32b8",
+  "createdAt": 1794655168463,
+  "lineage": {
+    "parent": "xrv_01M4FEYTZFVK5J2TVZP7N0ZTZ1",
+    "ancestry": ["xrv_01M4FEYTZFVK5J2TVZP7N0ZTZ1"]
+  },
+  "notes": "API Key 现在可以选择凭据库里「只用于网络请求」的凭据：扩展不再读取 Key 的原文，由 NekroNXT 在请求发往搜索服务时填入。以前选了这类凭据会误报“还没有配置 API Key”；凭据不可用时会说明原因。需要 NekroNXT 0.7.0 或更新版本。"
 }

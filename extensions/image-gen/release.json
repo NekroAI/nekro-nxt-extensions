@@ -1,11 +1,11 @@
 {
-  "revisionNumber": 4,
-  "revisionId": "xrv_01M7B43TBZWF7ZWKBW5RTTRQK7",
-  "payloadDigest": "fd09b968deb430432e7192c1f024171d1ba17c81b46b49949157bfbfa37546d8",
-  "createdAt": 1794596006275,
+  "revisionNumber": 5,
+  "revisionId": "xrv_01M7CWH8S505FMGTHPMYZS4QZ6",
+  "payloadDigest": "100738952f261adb27de4697039899e3eefc6d4866dc18651142047bf0c0d315",
+  "createdAt": 1794655167273,
   "lineage": {
-    "parent": "xrv_01M4FEYTW44A96EA6JYR6RBJG8",
-    "ancestry": ["xrv_01M4FEYTW44A96EA6JYR6RBJG8"]
+    "parent": "xrv_01M7B43TBZWF7ZWKBW5RTTRQK7",
+    "ancestry": ["xrv_01M7B43TBZWF7ZWKBW5RTTRQK7", "xrv_01M4FEYTW44A96EA6JYR6RBJG8"]
   },
-  "notes": "重新维护并升级：默认预设 NekroAPI，也支持其他 OpenAI 兼容与 Gemini 接口的服务，包括部署在本机或局域网的服务；按模型自动选择调用方式，新增七种画幅和参考图改图。需要 NekroNXT 0.10.0 或更新版本。已安装用户原来的服务地址、模型与尺寸保持不变；升级时需要重新确认权限：网络访问改为任意地址（有的服务把图片放在别的域名下），新增「读取文件」（改图用）。"
+  "notes": "API Key 现在可以选择凭据库里「只用于网络请求」的凭据：扩展不再读取 Key 的原文，由 NekroNXT 在请求发往图片服务时填入。以前选了这类凭据会误报“还没有配置 API Key”；凭据不可用时会说明原因。"
 }

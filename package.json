@@ -10,10 +10,11 @@
     "build": "tsx tools/pack.ts",
     "release:prepare": "tsx tools/pack.ts --bump",
     "verify": "tsx tools/verify.ts",
-    "check": "pnpm catalog:check && pnpm typecheck && pnpm test && pnpm build",
+    "check": "pnpm catalog:check && pnpm rules:check && pnpm typecheck && pnpm test && pnpm build",
     "format": "prettier --write .",
     "publish:community": "tsx tools/community-sync.ts",
     "listing:sync": "tsx tools/community-sync.ts --listing-only",
+    "rules:check": "tsx tools/source-rules.ts",
     "catalog:check": "tsx tools/catalog.ts",
     "catalog:bump": "tsx tools/catalog.ts --bump",
     "catalog:sync": "tsx tools/community-sync.ts --state-only"

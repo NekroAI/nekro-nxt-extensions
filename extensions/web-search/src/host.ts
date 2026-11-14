@@ -7,7 +7,8 @@ import { defineHostExtension, type NxtFetchResponse, type NxtHostLayerService } 
  * - 搜索服务地址与 API Key 是本机配置（`config.host`），所有智能体共用一份；工具在智能体中注册，但联网与读凭据
  *   都经 factory 收到的本机层 `nxt`，网络权限写在 `permissions.host`；默认返回条数是每个智能体的 `config.agent`；
  * - 只有一个「搜索服务地址」字段，按地址判断服务商，网络权限声明为 `mode: 'config'`，宿主只放行这个地址；
- * - API Key 是 `meta.role: 'secret'` 字段，用 `nxt.secrets.get` 读取，没有填写时给出可读提示而不是报错；
+ * - API Key 是 `meta.role: 'secret'` 字段，用 `nxt.secrets.placeholder` 放进请求头，宿主发出时才填入，代码拿不到原文，
+ *   「只用于网络请求」的凭据也能用；没有填写或凭据被拒时 fetch 失败，转成可读提示而不是报错；
  * - 结果截断到较短的摘要，控制占用的上下文；
  * - 静态提示只在版本或配置切换时变化，不破坏模型的提示词缓存。
  */
@@ -58,43 +59,60 @@ const item = (title: unknown, url: unknown, snippet: unknown, published: unknown
   }
 }
 
+/**
+ * 请求没有拿到响应时给用户的说明。宿主在发出前检查凭据：API Key 没有填写和所选凭据不对这个智能体开放报的是同一个原因，
+ * 凭据不允许发往服务地址时说明被拒的主机；网络问题也走这里。扩展分不出前两种，所以转述宿主的原因，再提示没填时去哪里填。
+ */
+const requestFailed = (provider: Provider, error: unknown): SearchResult => {
+  const reason = String(error instanceof Error ? error.message : error)
+    .replace(/[。.\s]+$/u, '')
+    .slice(0, 200)
+  return {
+    ok: false,
+    message:
+      provider === 'searxng'
+        ? `搜索失败：${reason}。`
+        : `搜索失败：${reason}。如果还没有填写${PROVIDER_NAMES[provider]}的 API Key，请在扩展配置中填写。`,
+  }
+}
+
 const search = async (
   nxt: NxtHostLayerService,
   endpoint: URL,
-  apiKey: string | undefined,
   query: string,
   count: number,
   freshness: Freshness | undefined,
 ): Promise<SearchResult> => {
   const provider = providerOf(endpoint)
-  if (provider !== 'searxng' && !apiKey) {
-    return { ok: false, message: `还没有配置${PROVIDER_NAMES[provider]}的 API Key，请在扩展配置中填写后再搜索。` }
-  }
   let response: NxtFetchResponse
-  if (provider === 'bocha') {
-    const bochaFreshness = { day: 'oneDay', week: 'oneWeek', month: 'oneMonth', year: 'oneYear' } as const
-    response = await nxt.http.fetch(new URL('/v1/web-search', endpoint).toString(), {
-      method: 'POST',
-      headers: { authorization: `Bearer ${apiKey}`, 'content-type': 'application/json' },
-      body: JSON.stringify({
-        query,
-        count,
-        summary: true,
-        freshness: freshness ? bochaFreshness[freshness] : 'noLimit',
-      }),
-    })
-  } else if (provider === 'tavily') {
-    response = await nxt.http.fetch(new URL('/search', endpoint).toString(), {
-      method: 'POST',
-      headers: { authorization: `Bearer ${apiKey}`, 'content-type': 'application/json' },
-      body: JSON.stringify({ query, max_results: count, ...(freshness ? { time_range: freshness } : {}) }),
-    })
-  } else {
-    const url = new URL('search', endpoint.toString().endsWith('/') ? endpoint : `${endpoint.toString()}/`)
-    url.searchParams.set('q', query)
-    url.searchParams.set('format', 'json')
-    if (freshness) url.searchParams.set('time_range', freshness)
-    response = await nxt.http.fetch(url.toString(), { headers: { accept: 'application/json' } })
+  try {
+    if (provider === 'bocha') {
+      const bochaFreshness = { day: 'oneDay', week: 'oneWeek', month: 'oneMonth', year: 'oneYear' } as const
+      response = await nxt.http.fetch(new URL('/v1/web-search', endpoint).toString(), {
+        method: 'POST',
+        headers: { authorization: `Bearer ${nxt.secrets.placeholder('apiKey')}`, 'content-type': 'application/json' },
+        body: JSON.stringify({
+          query,
+          count,
+          summary: true,
+          freshness: freshness ? bochaFreshness[freshness] : 'noLimit',
+        }),
+      })
+    } else if (provider === 'tavily') {
+      response = await nxt.http.fetch(new URL('/search', endpoint).toString(), {
+        method: 'POST',
+        headers: { authorization: `Bearer ${nxt.secrets.placeholder('apiKey')}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ query, max_results: count, ...(freshness ? { time_range: freshness } : {}) }),
+      })
+    } else {
+      const url = new URL('search', endpoint.toString().endsWith('/') ? endpoint : `${endpoint.toString()}/`)
+      url.searchParams.set('q', query)
+      url.searchParams.set('format', 'json')
+      if (freshness) url.searchParams.set('time_range', freshness)
+      response = await nxt.http.fetch(url.toString(), { headers: { accept: 'application/json' } })
+    }
+  } catch (error) {
+    return requestFailed(provider, error)
   }
   if (response.status === 401 || response.status === 403) {
     return {
@@ -181,14 +199,7 @@ export default defineHostExtension(async ({ harness, nxt: host }) => ({
             ? (freshness as Freshness)
             : undefined
           try {
-            return await search(
-              host,
-              endpoint,
-              await host.secrets.get('apiKey'),
-              keywords.slice(0, 200),
-              wanted,
-              window,
-            )
+            return await search(host, endpoint, keywords.slice(0, 200), wanted, window)
           } catch (error) {
             return {
               ok: false,

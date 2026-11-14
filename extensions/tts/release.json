@@ -1,7 +1,11 @@
 {
-  "revisionNumber": 3,
-  "revisionId": "xrv_01M4FEYTYH2GEWKZKXX8YKW6Q3",
-  "payloadDigest": "0162fae7819a6a42789ea32063ba8cdf65aab98e2d9f21e44a0d0a8ef0f6bdd5",
-  "createdAt": 1791520369617,
-  "notes": "迁移到 NekroNXT 扩展格式 V7，需要支持 V7 的 NekroNXT。服务地址、API Key 与模型移到本机配置，安装时填写一次，所有智能体共用；音色仍按智能体设置。升级后请在本机配置中重新填写 API Key。"
+  "revisionNumber": 4,
+  "revisionId": "xrv_01M7CWH9C4C21A3BDEBH0SJ4SV",
+  "payloadDigest": "a16734102b53279f6d57f18ccf3c1aa357e4b99acfff78f29ba4db8c894b3668",
+  "createdAt": 1794655167879,
+  "lineage": {
+    "parent": "xrv_01M4FEYTYH2GEWKZKXX8YKW6Q3",
+    "ancestry": ["xrv_01M4FEYTYH2GEWKZKXX8YKW6Q3"]
+  },
+  "notes": "API Key 现在可以选择凭据库里「只用于网络请求」的凭据：扩展不再读取 Key 的原文，由 NekroNXT 在请求发往语音服务时填入。以前选了这类凭据会误报“还没有配置 API Key”；凭据不可用时会说明原因。需要 NekroNXT 0.7.0 或更新版本。"
 }

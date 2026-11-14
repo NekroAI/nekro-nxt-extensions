@@ -4,7 +4,7 @@
   "displayName": "网页搜索",
   "description": "让智能体搜索网络上的最新信息并给出来源。支持博查、Tavily 与自建的 SearXNG，在配置中填写服务地址与 API Key 即可。",
   "createdAt": 1791378000000,
-  "requires": { "sdk": 7 },
+  "requires": { "sdk": 12 },
   "permissions": {
     "permissions": [],
     "networkOrigins": [],

@@ -22,12 +22,33 @@ describe('语音合成', () => {
     expect(host.assets).toEqual([])
   })
 
-  it('requires a secret and ignores credentials in ordinary configuration', async () => {
-    for (const options of [{}, { secrets: { apiKey: ' ' } }, { hostConfig: { apiKey: 'not-a-secret' } }]) {
-      const host = await createTestHost(factory, options)
-      expect((await host.call('speak', { text: '示例朗读' })).text).toContain('还没有配置')
-      expect(host.calls).toEqual([])
+  it('asks for the API Key when the host has none to fill in, without reading it in code', async () => {
+    for (const options of [{}, { hostConfig: { apiKey: 'not-a-secret' } }]) {
+      const fetch = vi.fn(success)
+      const host = await createTestHost(factory, { ...options, fetch })
+      const get = vi.spyOn(host.hostNxt.secrets, 'get')
+      const { value } = await host.call('speak', { text: '示例朗读' })
+      expect(value).toEqual({
+        ok: false,
+        message:
+          '语音合成失败：凭据字段 apiKey 还没有设置，或者绑定的凭据不对当前智能体开放。如果还没有填写 API Key，请在扩展配置中填写。',
+      })
+      expect(fetch).not.toHaveBeenCalled()
+      expect(get).not.toHaveBeenCalled()
     }
+  })
+
+  it('relays why the host refused the credential', async () => {
+    const host = await createTestHost(factory, {
+      secrets,
+      hostConfig: { endpoint: 'https://speech.example.com/v1' },
+      fetch: () => {
+        throw new Error('访问被拒：凭据不允许发往 speech.example.com。')
+      },
+    })
+    const { text } = await host.call('speak', { text: '示例' })
+    expect(text).toContain('语音合成失败：访问被拒：凭据不允许发往 speech.example.com。')
+    expect(host.assets).toEqual([])
   })
 
   it('posts defaults and saves MP3 for audio delivery', async () => {
@@ -35,8 +56,9 @@ describe('语音合成', () => {
     const { value, text } = await host.call('speak', { text: ' 示例朗读 ' })
     expect(host.calls[0]).toMatchObject({
       target: 'https://api.openai.com/v1/audio/speech',
-      input: { method: 'POST', headers: { authorization: 'Bearer sk-fixture', accept: 'audio/mpeg' } },
+      input: { method: 'POST', headers: { authorization: 'Bearer {{nxt-credential:apiKey}}', accept: 'audio/mpeg' } },
     })
+    expect(JSON.stringify(host.calls)).not.toContain('sk-fixture')
     expect(JSON.parse((host.calls[0]?.input as { body: string }).body)).toEqual({
       model: 'tts-1',
       input: '示例朗读',
@@ -179,7 +201,7 @@ describe('语音合成', () => {
     })
     expect((await network.call('speak', { text: '示例' })).value).toEqual({
       ok: false,
-      message: '语音合成失败：连接被拒绝',
+      message: '语音合成失败：连接被拒绝。如果还没有填写 API Key，请在扩展配置中填写。',
     })
     expect(network.calls).toHaveLength(1)
     for (const reason of ['外部服务 30 秒无响应', 'Request Timeout']) {
@@ -201,7 +223,7 @@ describe('语音合成', () => {
     })
     expect((await long.call('speak', { text: '示例' })).value).toEqual({
       ok: false,
-      message: `语音合成失败：${'错'.repeat(200)}`,
+      message: `语音合成失败：${'错'.repeat(200)}。如果还没有填写 API Key，请在扩展配置中填写。`,
     })
     const host = await createTestHost(factory, { secrets, fetch: success })
     vi.spyOn(host.nxt.assets, 'create').mockRejectedValueOnce(new Error('保存失败'))
