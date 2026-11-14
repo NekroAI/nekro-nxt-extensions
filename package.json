@@ -23,9 +23,9 @@
     "node": ">=22"
   },
   "devDependencies": {
-    "@nekro-nxt/contracts": "0.8.1",
-    "@nekro-nxt/extension-format": "0.7.2",
-    "@nekro-nxt/extension-sdk": "0.7.1",
+    "@nekro-nxt/contracts": "0.9.0",
+    "@nekro-nxt/extension-format": "0.8.0",
+    "@nekro-nxt/extension-sdk": "0.8.0",
     "@types/node": "^22.20.5",
     "@types/react": "18.3.31",
     "fflate": "0.8.3",
